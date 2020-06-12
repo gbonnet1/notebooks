@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "notebooks"
+version = "0.1.0"
+description = ""
+authors = ["Guillaume Bonnet <guillaume.bonnet@math.u-psud.fr>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+agd = "^0.1"
+jupyter = "^1.0"
+matplotlib = "^3.0"
+numpy = "^1.0"
+scipy = "^1.0"
+
+[tool.poetry.dev-dependencies]
+black = {version = "^19.0", allow-prereleases = true}
+flake8 = "^3.0"
+jupytext = "^1.0"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
