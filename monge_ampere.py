@@ -3,8 +3,8 @@
 # Monge-Ampère equations
 """
 
-# %%
 
+# %%
 import agd.LinearParallel as lp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,19 +12,18 @@ from agd import Domain, Selling
 from agd.AutomaticDifferentiation.Optimization import newton_root
 
 # %%
-
 x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 100)]), indexing="ij"))
 
 superbases = Selling.SuperbasesForConditioning(15)
+
 
 # %% [markdown]
 """
 ## 1. The discretized equation
 """
 
+
 # %%
-
-
 def MA(u, B, bc, superbases):
     superbases = np.multiply.outer(superbases, np.ones(u.shape, dtype=np.int64))
 
@@ -101,16 +100,13 @@ def MA(u, B, bc, superbases):
 ## 2. Dirichlet boundary conditions
 """
 
+
 # %%
-
-
 def SchemeDirichlet(u, B, bc, superbases):
     return np.where(bc.interior, MA(u, B, bc, superbases), u - bc.grid_values)
 
 
 # %%
-
-
 def B(x, r):
     return np.ones(x.shape[1:])
 
@@ -122,14 +118,14 @@ u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (B, bc, superbases))
 plt.contourf(*x, u)
 plt.show()
 
+
 # %% [markdown]
 """
 ### 2.1. Comparison with the exact solution
 """
 
+
 # %%
-
-
 def B(x, r):
     return 4 + 32 * lp.dot_VV(x, x) + 48 * lp.dot_VV(x, x) ** 2
 
@@ -149,14 +145,14 @@ def ExactQuartic(x):
 err = np.where(bc.interior, u - ExactQuartic(x), 0)
 print("Error:", np.max(np.abs(err)))
 
+
 # %% [markdown]
 """
 ### 2.2. Other domains
 """
 
+
 # %%
-
-
 def B(x, r):
     return np.ones(x.shape[1:])
 
@@ -168,9 +164,8 @@ u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (B, bc, superbases))
 plt.contourf(*x, u)
 plt.show()
 
+
 # %%
-
-
 def B(x, r):
     return np.ones(x.shape[1:])
 
@@ -182,14 +177,14 @@ u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (B, bc, superbases))
 plt.contourf(*x, u)
 plt.show()
 
+
 # %% [markdown]
 """
 ## 3. Optimal transport boundary conditions
 """
 
+
 # %%
-
-
 class BV2(Domain.Dirichlet):
     def __init__(self, domain, grid):
         super().__init__(domain, np.inf, grid)
@@ -206,8 +201,6 @@ class BV2(Domain.Dirichlet):
 
 
 # %%
-
-
 def SchemeBV2(u, B, bc, superbases):
     return np.where(
         bc.interior,
@@ -221,9 +214,8 @@ def SchemeBV2(u, B, bc, superbases):
 ### 3.1. Comparison with the exact solution
 """
 
+
 # %%
-
-
 def B(x, r):
     return (4 + 32 * lp.dot_VV(x, x) + 48 * lp.dot_VV(x, x) ** 2) / 36
 
@@ -242,5 +234,6 @@ def ExactQuartic(x):
 
 err = np.where(bc.interior, u - ExactQuartic(x), 0)
 print("Error:", np.max(np.abs(err)))
+
 
 # %%
