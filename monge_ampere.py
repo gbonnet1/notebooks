@@ -10,17 +10,113 @@ import matplotlib.pyplot as plt
 import numpy as np
 from agd import Domain, Selling
 from agd.AutomaticDifferentiation.Optimization import newton_root
+from matplotlib import patches
 
-# %%
-x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 100)]), indexing="ij"))
+# %% [markdown]
+"""
+In this notebook, we aim to solve Monge-Ampère equations of the form
 
-superbases = Selling.SuperbasesForConditioning(15)
+$$ \det (D^2 u(x) - A(x, u(x), D u(x))) = B(x, u(x), D u(x)) $$
+
+on an open domain $\Omega \subset \mathbb{R}^2$, for some given functions $A \colon \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2 \to \mathcal{S}_2$ and $B \colon \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2 \to \mathbb{R}$. We reformulate the Monge-Ampère equation in the form
+
+$$ \sup_{\substack{\mathcal{D} \in \mathcal{S}_2^+ \\ \operatorname{Tr}(\mathcal{D}) = 1}} 2 (\det \mathcal{D})^{1/2} B(x, u(x), D^2 u(x))^{1/2} - \langle \mathcal{D}, D^2 u(x) - A(x, u(x), D^2 u(x)) \rangle = 0. $$
+
+This reformulation satisfies two properties:
+
+* It is *degenerate elliptic*, meaning that it may be written as
+
+  $$ F(x, u(x), D u(x), D^2 u(x)) = 0, $$
+
+  where the function $F \colon \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2 \times \mathcal{S}_2 \to \mathbb{R}$ is nonincreasing with respect to its last variable.
+
+* It selects *admissible* solutions, that is, solutions $u \colon \Omega \to \mathbb{R}$ such that
+
+  $$ D^2 u(x) - A(x, u(x), D u(x)) \geq 0. $$
+"""
 
 
 # %% [markdown]
 """
 ## 1. The discretized equation
 """
+
+
+# %% [markdown]
+"""
+We discretize the reformulated equation on a grid $\mathcal{G}_h := \Omega \cap h \mathbb{Z}^2$, for some discretization step $h > 0$.
+"""
+
+
+# %%
+x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 100)]), indexing="ij"))
+
+
+# %% [markdown]
+"""
+The discretization of the equation is called *monotone* if the resulting numerical scheme may be written as
+
+$$ F^h(x, u^h(x), u^h) = 0, $$
+
+where $F^h \colon \mathcal{G}_h \times \mathbb{R} \times \mathbb{R}^{\mathcal{G}_h} \to \mathbb{R}$ is a function that is nonincreasing with respect to its last argument. Monotonicity is a discrete counterpart to degenerate ellipticity and is sometimes required for the scheme to be convergent.
+
+Let $u \colon \Omega \to \mathbb{R}$ and $x \in \Omega$. We assume for now that $x$ is far from $\partial \Omega$. For any $e \in \mathbb{Z}^d$ such that $B_2(x, h |e|) \in \Omega$, we define
+
+\begin{align*}
+\delta_h^e u(x) &:= \frac{u(x + h e) - u(x)}{h}, &
+\Delta_h^e u(x) &:= \frac{u(x + h e) + u(x - h e) - 2 u(x)}{h^2}.
+\end{align*}
+
+if $u \in C^4(\Omega)$, then
+
+\begin{align*}
+\delta_h^e u(x) &= \langle e, D u(x) \rangle + O(h), &
+\Delta_h^e u(x) &= \langle e, D^2 u(x) e \rangle + O(h^2).
+\end{align*}
+
+We build a monotone finite difference scheme using the notion of superbase of $\mathbb{Z}^2$. A basis of $\mathbb{Z}^2$ is a pair of $v = (v_1, v_2)$ of vectors of $\mathbb{Z}^2$ such that $\det(v_1, v_2) = \pm 1$. A superbase of $\mathbb{Z}^2$ is a triplet $v = (v_1, v_2, v_3)$ of vectors of $\mathbb{Z}^2$ such that $(v_1, v_2)$ is a basis of $\mathbb{Z}^2$ and $v_3 = -v_1 - v_2$. Note that the definition is symmetric: $(v_1, v_3)$ and $(v_2, v_3)$ are also bases of $\mathbb{Z}^2$.
+
+Let $\mathcal{D} \in \mathcal{S}_2$. If $v$ is a superbase of $\mathbb{Z}^2$, then we have Selling's formula:
+
+$$ \mathcal{D} = -\sum_{1 \leq i \leq 3} \langle v_{i+1}, \mathcal{D} v_{i+2} \rangle v_i^\perp (v_i^\perp)^\top, $$
+
+where indices are taken modulo three. The superbase $v$ is called *$\mathcal{D}$-obtuse* if $\langle v_i, \mathcal{D} v_j \rangle \leq 0$ for any $1 \leq i < j \leq 3$. If $v$ is $\mathcal{D}$-obtuse, we define the finite difference operator
+
+$$ \Delta_h^{\mathcal{D}} u(x) := -\sum_{1 \leq i \leq 3} \langle v_{i+1}, \mathcal{D} v_{i+2} \rangle \Delta_h^{v_i^\perp} u(x). $$
+
+By Selling's formula, if $u \in C^4(\Omega)$, then
+
+$$ \Delta_h^{\mathcal{D}} u(x) = \langle \mathcal{D}, D^2 u(x) \rangle + O(h^2). $$
+
+The $\mathcal{D}$-obtuseness of $v$ is required so that the operator $\Delta_h^{\mathcal{D}}$ may be used to build a monotone scheme. For any superbase $v$ of $\mathbb{Z}^2$, we define the set $\mathcal{S}_2^v \subset \mathcal{S}_d^+$ of matrices $\mathcal{D} \in \mathcal{S}_d^+$ such that $v$ is $\mathcal{D}$-obtuse. For any $\mu \geq 1$, Selling's algorithm maybe used to compute a set $V$ of superbases of $\mathbb{Z}^2$ such that $\cup_{v \in V} \mathcal{S}_2^v$ contains all matrices $\mathcal{D} \in \mathcal{S}_2^{++}$ whose condition number is less than or equal to $\mu$.
+"""
+
+
+# %%
+superbases = Selling.SuperbasesForConditioning(15)
+
+
+# %%
+ax = plt.subplot(111)
+
+ax.set_xlim(-np.max(np.abs(superbases)), np.max(np.abs(superbases)))
+ax.set_ylim(-np.max(np.abs(superbases)), np.max(np.abs(superbases)))
+
+for i in range(superbases.shape[2]):
+    p = patches.Polygon(
+        [
+            superbases[:, 0, i],
+            -superbases[:, 2, i],
+            superbases[:, 1, i],
+            -superbases[:, 0, i],
+            superbases[:, 2, i],
+            -superbases[:, 1, i],
+        ]
+    )
+    p.set_alpha(0.1)
+    ax.add_artist(p)
+
+plt.show()
 
 
 # %%
