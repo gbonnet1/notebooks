@@ -48,7 +48,7 @@ We discretize the reformulated equation on a grid $\mathcal{G}_h := \Omega \cap 
 
 
 # %%
-x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 100)]), indexing="ij"))
+x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 40)]), indexing="ij"))
 
 
 # %% [markdown]
