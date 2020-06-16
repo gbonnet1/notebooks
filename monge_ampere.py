@@ -92,21 +92,15 @@ The $\mathcal{D}$-obtuseness of $v$ is required so that the operator $\Delta_h^{
 
 
 # %%
-superbases = Selling.SuperbasesForConditioning(15)
+superbases = np.multiply.outer(
+    Selling.SuperbasesForConditioning(15), np.ones(x.shape[1:], dtype=np.int64)
+)
 
 
 # %%
-def MA(u, A, B, bc, superbases):
-    superbases = np.multiply.outer(superbases, np.ones(u.shape, dtype=np.int64))
-
-    du = bc.DiffCentered(u, [[1, 0], [0, 1]])
-    d2u = bc.Diff2(u, lp.perp(superbases))
-
-    a = A(bc.grid, u, du)
-    b = B(bc.grid, u, du)
-
+def MA(A, B, d2u, superbases):
     delta = d2u - lp.dot_VAV(
-        lp.perp(superbases), a[:, :, np.newaxis, np.newaxis], lp.perp(superbases)
+        lp.perp(superbases), A[:, :, np.newaxis, np.newaxis], lp.perp(superbases)
     )
 
     residue = -np.inf
@@ -125,7 +119,7 @@ def MA(u, A, B, bc, superbases):
     w = -lp.dot_VV(np.roll(superbases, 1, axis=1), np.roll(superbases, 2, axis=1)) / 2
 
     q = lp.dot_AV(W, delta)
-    r = np.sqrt(b + lp.dot_VV(q, q))
+    r = np.sqrt(B + lp.dot_VV(q, q))
 
     residue = np.maximum(
         residue,
@@ -148,7 +142,7 @@ def MA(u, A, B, bc, superbases):
         residue,
         np.max(
             np.sqrt(
-                b
+                B
                 * lp.det(bases) ** 2
                 / (
                     lp.dot_VV(bases[:, 0], bases[:, 0])
@@ -180,11 +174,21 @@ def MA(u, A, B, bc, superbases):
 
 
 # %%
-def SchemeDirichlet(u, A, B, bc, superbases):
-    return np.where(bc.interior, MA(u, A, B, bc, superbases), u - bc.grid_values)
+def SchemeDirichlet(u, x, domain, A, B, g, superbases):
+    bc = Domain.Dirichlet(domain, g, x)
+
+    du = bc.DiffCentered(u, [[1, 0], [0, 1]])
+    d2u = bc.Diff2(u, lp.perp(superbases))
+
+    return np.where(
+        bc.interior, MA(A(x, u, du), B(x, u, du), d2u, superbases), u - bc.grid_values
+    )
 
 
 # %%
+domain = Domain.Box([[-1, 1], [-1, 1]])
+
+
 def A(x, r, p):
     return np.zeros((2, 2) + x.shape[1:])
 
@@ -193,9 +197,10 @@ def B(x, r, p):
     return np.ones(x.shape[1:])
 
 
-bc = Domain.Dirichlet(Domain.Box([[-1, 1], [-1, 1]]), 0.0, x)
-
-u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (A, B, bc, superbases))
+u = newton_root(
+    SchemeDirichlet, np.zeros(x.shape[1:]), (x, domain, A, B, 0.0, superbases)
+)
+u = np.where(domain.level(x) < 0, u, np.nan)
 
 plt.contourf(*x, u)
 plt.show()
@@ -208,8 +213,7 @@ plt.show()
 
 
 # %%
-def Exact(x):
-    return (lp.dot_VV(x, x) + lp.dot_VV(x, x) ** 2) / 6
+domain = Domain.Ball()
 
 
 def A(x, r, p):
@@ -220,14 +224,19 @@ def B(x, r, p):
     return (4 + 32 * lp.dot_VV(x, x) + 48 * lp.dot_VV(x, x) ** 2) / 36
 
 
-bc = Domain.Dirichlet(Domain.Ball(), 1 / 3, x)
+def Exact(x):
+    return (lp.dot_VV(x, x) + lp.dot_VV(x, x) ** 2) / 6
 
-u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (A, B, bc, superbases))
+
+u = newton_root(
+    SchemeDirichlet, np.zeros(x.shape[1:]), (x, domain, A, B, 1 / 3, superbases)
+)
+u = np.where(domain.level(x) < 0, u, np.nan)
 
 plt.contourf(*x, u)
 plt.show()
 
-err = np.where(bc.interior, u - Exact(x), 0)
+err = np.where(domain.level(x) < 0, u - Exact(x), 0)
 print("Error:", np.max(np.abs(err)))
 
 
@@ -237,9 +246,7 @@ Q_inv = np.array([[2, -1], [-1, 2]]) / 3
 
 assert np.allclose(Q @ Q_inv, np.eye(2))
 
-
-def Exact(x):
-    return lp.dot_VAV(x, np.multiply.outer(Q, np.ones(x.shape[1:])), x) / 2
+domain = Domain.Ball()
 
 
 def A(x, r, p):
@@ -260,14 +267,19 @@ def B(x, r, p):
     )
 
 
-bc = Domain.Dirichlet(Domain.Ball(), Exact, x)
+def Exact(x):
+    return lp.dot_VAV(x, np.multiply.outer(Q, np.ones(x.shape[1:])), x) / 2
 
-u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (A, B, bc, superbases))
+
+u = newton_root(
+    SchemeDirichlet, np.zeros(x.shape[1:]), (x, domain, A, B, Exact, superbases)
+)
+u = np.where(domain.level(x) < 0, u, np.nan)
 
 plt.contourf(*x, u)
 plt.show()
 
-err = np.where(bc.interior, u - Exact(x), 0)
+err = np.where(domain.level(x) < 0, u - Exact(x), 0)
 print("Error:", np.max(np.abs(err)))
 
 
@@ -278,6 +290,9 @@ print("Error:", np.max(np.abs(err)))
 
 
 # %%
+domain = Domain.Union(Domain.Ball(), Domain.Box())
+
+
 def A(x, r, p):
     return np.zeros((2, 2) + x.shape[1:])
 
@@ -286,15 +301,19 @@ def B(x, r, p):
     return np.ones(x.shape[1:])
 
 
-bc = Domain.Dirichlet(Domain.Union(Domain.Ball(), Domain.Box()), 0.0, x)
-
-u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (A, B, bc, superbases))
+u = newton_root(
+    SchemeDirichlet, np.zeros(x.shape[1:]), (x, domain, A, B, 0.0, superbases)
+)
+u = np.where(domain.level(x) < 0, u, np.nan)
 
 plt.contourf(*x, u)
 plt.show()
 
 
 # %%
+domain = Domain.Complement(Domain.Ball(), Domain.Box())
+
+
 def A(x, r, p):
     return np.zeros((2, 2) + x.shape[1:])
 
@@ -303,9 +322,10 @@ def B(x, r, p):
     return np.ones(x.shape[1:])
 
 
-bc = Domain.Dirichlet(Domain.Complement(Domain.Ball(), Domain.Box()), 0.0, x)
-
-u = newton_root(SchemeDirichlet, np.zeros(x.shape[1:]), (A, B, bc, superbases))
+u = newton_root(
+    SchemeDirichlet, np.zeros(x.shape[1:]), (x, domain, A, B, 0.0, superbases)
+)
+u = np.where(domain.level(x) < 0, u, np.nan)
 
 plt.contourf(*x, u)
 plt.show()
@@ -318,38 +338,44 @@ plt.show()
 
 
 # %%
-class BV2(Domain.Dirichlet):
-    def __init__(self, domain, grid):
-        super().__init__(domain, np.inf, grid)
+def SchemeBV2(u, x, domain, A, B, C, sigma, superbases):
+    bc = Domain.Dirichlet(domain, np.inf, x)
 
-    def DiffUpwind(self, u, offsets, reth=False):
-        du = super().DiffUpwind(u, offsets)
+    du0 = bc.DiffUpwind(u, [[1, 0], [0, 1]])
+    du1 = bc.DiffUpwind(u, [[-1, 0], [0, -1]])
+    # TODO
+    assert np.sum(np.logical_and(du0 == np.inf, du1 == np.inf)) == 0
+    du0 = np.where(du0 == np.inf, -du1, du0)
+    du1 = np.where(du1 == np.inf, -du0, du1)
+    du = (du0 - du1) / 2
 
-        du = np.where(du == np.inf, np.sqrt(lp.dot_VV(offsets, offsets)), du)
+    du0 = bc.DiffUpwind(u, lp.perp(superbases))
+    du0 = np.where(
+        du0 == np.inf,
+        sigma(
+            x[:, np.newaxis, np.newaxis],
+            u[np.newaxis, np.newaxis],
+            lp.perp(superbases),
+        ),
+        du0,
+    )
+    du1 = bc.DiffUpwind(u, -lp.perp(superbases))
+    du1 = np.where(
+        du1 == np.inf,
+        sigma(
+            x[:, np.newaxis, np.newaxis],
+            u[np.newaxis, np.newaxis],
+            -lp.perp(superbases),
+        ),
+        du1,
+    )
+    d2u = (du0 + du1) / bc.gridscale
 
-        if reth:
-            return du, self.gridscale
-        else:
-            return du
-
-    def DiffCentered(self, u, offsets):
-        du0 = super().DiffUpwind(u, offsets)
-        du1 = super().DiffUpwind(u, -np.asarray(offsets))
-
-        # TODO
-        assert np.sum(np.logical_and(du0 == np.inf, du1 == np.inf)) == 0
-
-        du0 = np.where(du0 == np.inf, -du1, du0)
-        du1 = np.where(du1 == np.inf, -du0, du1)
-
-        return (du0 - du1) / 2
-
-
-# %%
-def SchemeBV2(u, A, B, bc, superbases):
     return np.where(
         bc.interior,
-        MA(u, A, B, bc, superbases) + u.flatten()[np.argmin(bc.domain.level(bc.grid))],
+        MA(A(x, u, du), B(x, u, du), d2u, superbases)
+        + u.flatten()[np.argmin(bc.domain.level(bc.grid))]
+        - C,
         u - bc.grid_values,
     )
 
@@ -361,8 +387,7 @@ def SchemeBV2(u, A, B, bc, superbases):
 
 
 # %%
-def Exact(x):
-    return (lp.dot_VV(x, x) + lp.dot_VV(x, x) ** 2) / 6
+domain = Domain.Ball()
 
 
 def A(x, r, p):
@@ -373,20 +398,28 @@ def B(x, r, p):
     return (4 + 32 * lp.dot_VV(x, x) + 48 * lp.dot_VV(x, x) ** 2) / 36
 
 
-bc = BV2(Domain.Ball(), x)
+def sigma(x, r, e):
+    return np.sqrt(lp.dot_VV(e, e))
 
-u = newton_root(SchemeBV2, np.zeros(x.shape[1:]), (A, B, bc, superbases))
+
+def Exact(x):
+    return (lp.dot_VV(x, x) + lp.dot_VV(x, x) ** 2) / 6
+
+
+u = newton_root(
+    SchemeBV2, np.zeros(x.shape[1:]), (x, domain, A, B, 0, sigma, superbases)
+)
+u = np.where(domain.level(x) < 0, u, np.nan)
 
 plt.contourf(*x, u)
 plt.show()
 
-err = np.where(bc.interior, u - Exact(x), 0)
+err = np.where(domain.level(x) < 0, u - Exact(x), 0)
 print("Error:", np.max(np.abs(err)))
 
 
 # %%
-def Exact(x):
-    return lp.dot_VV(x, x) / 2
+domain = Domain.Ball()
 
 
 def A(x, r, p):
@@ -397,16 +430,60 @@ def B(x, r, p):
     return (1 + 2 * r / 3 + lp.dot_VV(p, p) / 6) ** 2
 
 
-bc = BV2(Domain.Ball(), x)
+def sigma(x, r, e):
+    return np.sqrt(lp.dot_VV(e, e))
+
+
+def Exact(x):
+    return lp.dot_VV(x, x) / 2
+
 
 # TODO: initial guess
-u = newton_root(SchemeBV2, lp.dot_VV(x, x), (A, B, bc, superbases))
+u = newton_root(SchemeBV2, lp.dot_VV(x, x), (x, domain, A, B, 0, sigma, superbases))
+u = np.where(domain.level(x) < 0, u, np.nan)
 
 plt.contourf(*x, u)
 plt.show()
 
-err = np.where(bc.interior, u - Exact(x), 0)
+err = np.where(domain.level(x) < 0, u - Exact(x), 0)
 print("Error:", np.max(np.abs(err)))
+
+
+# %% [markdown]
+"""
+### 3.2. Near-field reflector design
+"""
+
+
+# %%
+domain = Domain.Ball()
+
+
+def f(x):
+    return np.ones(x.shape[1:])
+
+
+def A(x, r, p):
+    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
+    return (2 + tmp) / r * lp.outer(p, p) - r ** 3 * tmp * lp.identity(x.shape[1:])
+
+
+def B(x, r, p):
+    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
+    return r ** 6 * (tmp ** 3 - tmp ** 2) * f(x)
+
+
+def sigma(x, r, e):
+    return 2 * r ** 3 * (np.sqrt(lp.dot_VV(e, e)) - lp.dot_VV(x, e))
+
+
+u = newton_root(
+    SchemeBV2, np.full(x.shape[1:], 0.1), (x, domain, A, B, 0.1, sigma, superbases),
+)
+u = np.where(domain.level(x) < 0, u, np.nan)
+
+plt.contourf(*x, u)
+plt.show()
 
 
 # %%
