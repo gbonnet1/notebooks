@@ -19,7 +19,7 @@ $$ \det (D^2 u(x) - A(x, u(x), D u(x))) = B(x, u(x), D u(x)) $$
 
 on an open domain $\Omega \subset \mathbb{R}^2$, for some given functions $A \colon \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2 \to \mathcal{S}_2$ and $B \colon \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2 \to \mathbb{R}$. We reformulate the Monge-Ampère equation in the form
 
-$$ \sup_{\substack{\mathcal{D} \in \mathcal{S}_2^+ \\ \operatorname{Tr}(\mathcal{D}) = 1}} 2 (\det \mathcal{D})^{1/2} B(x, u(x), D^2 u(x))^{1/2} - \langle \mathcal{D}, D^2 u(x) - A(x, u(x), D^2 u(x)) \rangle = 0. $$
+$$ \sup_{\substack{\mathcal{D} \in \mathcal{S}_2^+ \\ \operatorname{Tr}(\mathcal{D}) = 1}} 2 (\det \mathcal{D})^{1/2} B(x, u(x), D u(x))^{1/2} - \langle \mathcal{D}, D^2 u(x) - A(x, u(x), D u(x)) \rangle = 0. $$
 
 This reformulation satisfies two properties:
 
