@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from agd import Domain, Selling
 from agd.AutomaticDifferentiation.Optimization import newton_root
-from matplotlib import patches
 
 # %% [markdown]
 """
@@ -94,29 +93,6 @@ The $\mathcal{D}$-obtuseness of $v$ is required so that the operator $\Delta_h^{
 
 # %%
 superbases = Selling.SuperbasesForConditioning(15)
-
-
-# %%
-ax = plt.subplot(111)
-
-ax.set_xlim(-np.max(np.abs(superbases)), np.max(np.abs(superbases)))
-ax.set_ylim(-np.max(np.abs(superbases)), np.max(np.abs(superbases)))
-
-for i in range(superbases.shape[2]):
-    p = patches.Polygon(
-        [
-            superbases[:, 0, i],
-            -superbases[:, 2, i],
-            superbases[:, 1, i],
-            -superbases[:, 0, i],
-            superbases[:, 2, i],
-            -superbases[:, 1, i],
-        ]
-    )
-    p.set_alpha(0.1)
-    ax.add_artist(p)
-
-plt.show()
 
 
 # %%
