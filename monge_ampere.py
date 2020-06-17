@@ -92,13 +92,13 @@ The $\mathcal{D}$-obtuseness of $v$ is required so that the operator $\Delta_h^{
 
 
 # %%
-superbases = np.multiply.outer(
-    Selling.SuperbasesForConditioning(15), np.ones(x.shape[1:], dtype=np.int64)
-)
+superbases = Selling.SuperbasesForConditioning(15)
 
 
 # %%
 def MA(A, B, d2u, superbases):
+    superbases = np.expand_dims(superbases, (3, 4))
+
     delta = d2u - lp.dot_VAV(
         lp.perp(superbases), A[:, :, np.newaxis, np.newaxis], lp.perp(superbases)
     )
@@ -128,7 +128,7 @@ def MA(A, B, d2u, superbases):
         residue,
         np.max(
             np.where(
-                np.all(lp.dot_VA(q, W) <= r * w, axis=0),
+                np.all(lp.dot_AV(lp.transpose(W), q) <= r * w, axis=0),
                 r - lp.dot_VV(w, delta),
                 -np.inf,
             ),
@@ -359,7 +359,7 @@ def SchemeBV2(u, x, domain, A, B, C, sigma, superbases):
         sigma(
             x[:, np.newaxis, np.newaxis],
             u[np.newaxis, np.newaxis],
-            lp.perp(superbases),
+            np.multiply.outer(lp.perp(superbases), np.ones(x.shape[1:])),
         ),
         du0,
     )
@@ -369,7 +369,7 @@ def SchemeBV2(u, x, domain, A, B, C, sigma, superbases):
         sigma(
             x[:, np.newaxis, np.newaxis],
             u[np.newaxis, np.newaxis],
-            -lp.perp(superbases),
+            np.multiply.outer(-lp.perp(superbases), np.ones(x.shape[1:])),
         ),
         du1,
     )
