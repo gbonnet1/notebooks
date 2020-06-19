@@ -119,7 +119,7 @@ where for any $v \in V_3$, $b \geq 0$, and $\delta \in \mathbb{R}^3$,
 
 # %% [markdown]
 """
-### 2.1. Computing the maximum
+### Computing the maximum
 """
 
 
@@ -225,7 +225,7 @@ where
 
 # %% [markdown]
 """
-3. Implementation of the scheme
+## 3. Implementation of the scheme
 """
 
 
@@ -357,7 +357,7 @@ def Scheme(a, b, d2u, stencil):
 
 # %% [markdown]
 """
-4. Dirichlet boundary conditions
+## 4. Dirichlet boundary conditions
 """
 
 
@@ -406,7 +406,7 @@ print("Error:", np.max(np.abs(error)))
 
 # %% [markdown]
 """
-## 4. Optimal transport boundary conditions
+## 5. Optimal transport boundary conditions
 """
 
 
