@@ -5,6 +5,10 @@
 
 
 # %%
+# !python3 -c 'import agd' 2> /dev/null || pip install agd
+
+
+# %%
 from dataclasses import dataclass
 
 import agd.LinearParallel as lp
