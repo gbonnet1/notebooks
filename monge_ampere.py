@@ -308,31 +308,22 @@ stencil = StencilForConditioning(15)
 
 
 # %%
-def H3(b, delta, stencil):
-    Q = np.expand_dims(stencil.Q, (3, 4))
-    w = np.expand_dims(stencil.w, (2, 3))
-    delta = delta[stencil.V3_indices]
-
+def H3(Q, w, b, delta):
     Q_delta = lp.dot_AV(Q, delta)
     r = np.sqrt(b + lp.dot_VV(delta, Q_delta))
     return np.where(np.all(Q_delta <= r * w, axis=0), r - lp.dot_VV(w, delta), -np.inf)
 
 
 # %%
-def H2(b, delta, stencil):
-    omega0 = np.expand_dims(stencil.omega0, (1, 2))
-    omega1 = np.expand_dims(stencil.omega1, (2, 3))
-    omega2 = np.expand_dims(stencil.omega2, (2, 3))
-    delta = delta[stencil.V2_indices]
-
+def H2(omega0, omega1, omega2, b, delta):
     return np.sqrt(omega0 * b + lp.dot_VV(omega1, delta) ** 2) - lp.dot_VV(
         omega2, delta
     )
 
 
 # %%
-def H1(delta, stencil):
-    return -delta / np.expand_dims(lp.dot_VV(stencil.V1, stencil.V1), (1, 2))
+def H1(v, delta):
+    return -delta / lp.dot_VV(v, v)
 
 
 # %%
@@ -344,15 +335,41 @@ def Scheme(a, b, d2u, stencil):
     )
 
     b_zero = b == 0
+    b = np.where(b_zero, 1, b)
 
-    return np.where(
-        b_zero,
-        np.max(H1(delta, stencil), axis=0),
-        np.maximum(
-            np.max(H2(np.where(b_zero, 1, b), delta, stencil), axis=0),
-            np.max(H3(np.where(b_zero, 1, b), delta, stencil), axis=0),
-        ),
-    )
+    residue = -np.inf
+
+    for i in range(stencil.V3.shape[2]):
+        residue = np.maximum(
+            residue,
+            H3(
+                stencil.Q[:, :, i, np.newaxis, np.newaxis],
+                stencil.w[:, i, np.newaxis, np.newaxis],
+                b,
+                delta[stencil.V3_indices[:, i]],
+            ),
+        )
+
+    for i in range(stencil.V2.shape[2]):
+        residue = np.maximum(
+            residue,
+            H2(
+                stencil.omega0[i, np.newaxis, np.newaxis],
+                stencil.omega1[:, i, np.newaxis, np.newaxis],
+                stencil.omega2[:, i, np.newaxis, np.newaxis],
+                b,
+                delta[stencil.V2_indices[:, i]],
+            ),
+        )
+
+    residue = np.where(b_zero, -np.inf, residue)
+
+    for i in range(stencil.V1.shape[1]):
+        residue = np.maximum(
+            residue, H1(stencil.V1[:, i, np.newaxis, np.newaxis], delta[i])
+        )
+
+    return residue
 
 
 # %% [markdown]
@@ -388,7 +405,7 @@ def B_quartic(x, r, p):
 u = newton_root(
     SchemeDirichlet,
     np.zeros(x.shape[1:]),
-    (x, domain_ball, A_zero, B_quartic, 0.9 ** 4, stencil),
+    (x, domain_ball, A_zero, B_quartic, 0.9 ** 2, stencil),
 )
 u = np.where(domain_ball.level(x) < 0, u, np.nan)
 
