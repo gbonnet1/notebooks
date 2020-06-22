@@ -16,6 +16,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 from agd import Domain, Selling
 from agd.AutomaticDifferentiation.Optimization import newton_root
+from agd.AutomaticDifferentiation.Sparse import spAD
+
+
+# %%
+# TODO: alternative to this?
+def spad_sum(a):
+    if not isinstance(a, spAD):
+        return
+
+    index, inverse = np.unique(a.index, axis=-1, return_inverse=True)
+    coef = np.zeros(index.shape)
+
+    for i in range(index.shape[-1]):
+        coef[..., i] = np.sum(a.coef[..., inverse == i], axis=-1)
+
+    a.index = index
+    a.coef = coef
+
 
 # %% [markdown]
 """
@@ -333,6 +351,9 @@ def Scheme(a, b, d2u, stencil):
         np.expand_dims(a, 2),
         np.expand_dims(stencil.V1, (2, 3)),
     )
+
+    spad_sum(b)
+    spad_sum(delta)
 
     b_zero = b == 0
     b = np.where(b_zero, 1, b)
