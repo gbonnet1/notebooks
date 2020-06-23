@@ -11,12 +11,15 @@
 # %%
 from dataclasses import dataclass
 
+import agd.FiniteDifferences as fd
 import agd.LinearParallel as lp
 import matplotlib.pyplot as plt
 import numpy as np
 from agd import Domain, Selling
 from agd.AutomaticDifferentiation.Optimization import newton_root
 from agd.AutomaticDifferentiation.Sparse import spAD
+
+from lib.reflector import simulate_reflector
 
 
 # %%
@@ -508,9 +511,8 @@ u = newton_root(
     np.zeros(x.shape[1:]),
     (x, domain_ball, A_zero, B_quartic, 0.9 ** 2, stencil),
 )
-u = np.where(domain_ball.level(x) < 0, u, np.nan)
 
-plt.contourf(*x, u)
+plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
 plt.show()
 
 
@@ -572,9 +574,22 @@ def SchemeBV2(u, x, domain, A, B, C, sigma, stencil):
 
 # %%
 def f(x):
-    return np.full(x.shape[1:], 1 / 0.9 ** 2)
+    return (
+        1 / (3 * 0.9 ** 2)
+        + np.where((x[0] + 0.1) ** 2 + (x[1] - 0.2) ** 2 < 0.25, 1 / (3 * 0.5 ** 2), 0)
+        + np.where(
+            np.logical_and(np.logical_and(x[0] < 0.5, x[1] > -0.5), x[0] - x[1] > 0,),
+            2 * np.pi / 3,
+            0,
+        )
+    )
 
 
+plt.contourf(*x, np.where(domain_ball.level(x) < 0, f(x), np.nan))
+plt.show()
+
+
+# %%
 def A_reflector(x, r, p):
     tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
     return (2 + tmp) / r * lp.outer(p, p) - r ** 3 * tmp * lp.identity(x.shape[1:])
@@ -594,10 +609,35 @@ u = newton_root(
     np.full(x.shape[1:], 0.1),
     (x, domain_ball, A_reflector, B_reflector, 0.1, sigma_reflector, stencil),
 )
-u = np.where(domain_ball.level(x) < 0, u, np.nan)
 
-plt.contourf(*x, u)
+plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
 plt.show()
+
+
+# %%
+def Y_reflector(x, r, p):
+    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
+    return x + 1 / (r ** 3 * tmp) * p
+
+
+def Z_reflector(x, r, p):
+    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
+    return (1 - 1 / tmp) / r
+
+
+gridscale = x[0, 1, 0] - x[0, 0, 0]
+du = fd.DiffCentered(u, [[1, 0], [0, 1]], gridscale)
+
+interior = domain_ball.level(x) < 0
+y = Y_reflector(x[:, interior], u[interior], du[:, interior])
+z = Z_reflector(x[:, interior], u[interior], du[:, interior])
+
+plt.tripcolor(*y, z)
+plt.show()
+
+
+# %%
+simulate_reflector(y, z)
 
 
 # %%
