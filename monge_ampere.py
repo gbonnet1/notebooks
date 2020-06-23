@@ -453,6 +453,32 @@ def Scheme(a, b, d2u, stencil):
 """
 
 
+# %% [markdown]
+"""
+Let $\mathcal{\overline G}_h := \mathcal{G}_h \cap \partial \Omega$ and $g \colon \partial \Omega \to \mathbb{R}$. We are looking for a function $u \colon \mathcal{\overline G}_h \to \mathbb{R}$ which solves the numerical scheme on $\mathcal{G}_h$ and such that $u(x) = g(x)$ on $\partial \Omega$. We have to explain how we adapt the definitions of finite difference operators $D_h$ and $\Delta_h^e$ near $\partial \Omega$. For any $u \colon \mathcal{\overline G}_h \to \mathbb{R}$, $x \in \mathcal{G}_h$, $e \in \mathbb{Z}^2$, and $A \in \mathcal{S}_2$, we let
+\begin{equation}
+    \delta_h^e u(x) := \frac{u(x + h_+ e) - u(x - h_- e)}{h_+ + h_-},
+\end{equation}
+\begin{equation}
+    \Delta_h^e [u, A](x) := \frac{2}{h_+ + h_-} \left(\frac{u(x + h_+ e) - u(x)}{h_+} + \frac{u(x - h_- e) - u(x)}{h_-}\right) - \langle e, A e \rangle,
+\end{equation}
+where
+\begin{equation}
+    h_+ := \sup \{t \leq h \mid x + t' e \in \Omega,\, \forall t' \in [0, t]\},
+\end{equation}
+\begin{equation}
+    h_- := \sup \{t \leq h \mid x - t' e \in \Omega,\, \forall t' \in [0, t]\}.
+\end{equation}
+Denoting by $(e_1, e_2)$ the canonical basis of $\mathbb{R}^2$, we let
+\begin{equation}
+    D_h u(x) := \begin{pmatrix}
+        \delta_h^{e_1} u(x) \\
+        \delta_h^{e_2} u(x)
+    \end{pmatrix}.
+\end{equation}
+"""
+
+
 # %%
 def SchemeDirichlet(u, x, domain, A, B, g, stencil):
     bc = Domain.Dirichlet(domain, g, x)
