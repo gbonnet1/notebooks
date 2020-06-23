@@ -247,9 +247,21 @@ where
 """
 
 
+# %% [markdown]
+"""
+We start by declaring an array `x` of elements of $h \mathbb{Z}^2 \cap [-1, 1]^2$ and a domain $\Omega \subset [-1, 1]^2$.
+"""
+
+
 # %%
 x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 40)]), indexing="ij"))
 domain_ball = Domain.Ball(radius=0.9)
+
+
+# %% [markdown]
+"""
+Instances of the following class represent the stencil used in the scheme. Arrays `V2_indices` and `V3_indices` store, respectively, indices in `V1` of vectors of bases of $V_2$ and superbases of $V_3$, up to a change of sign. We also store arrays `Q`, `w`, `omega0`, `omega1`, and `omega2` of matrices $Q$ and vectors $v$ associated to superbases $v \in V_3$, and of scalars $\omega_0$ and vectors $\omega_1$ and $\omega_2$ associated to bases $v \in V_2$.
+"""
 
 
 # %%
@@ -265,6 +277,12 @@ class Stencil:
     omega0: np.ndarray
     omega1: np.ndarray
     omega2: np.ndarray
+
+
+# %% [markdown]
+"""
+Using Selling's algorithm, given $\mu \geq 1$, we compute a stencil $V_1$, $V_2$, $V_3$ such that any matrix $\mathcal{D} \in \mathcal{S}_2^{++}$ whose condition number is less than or equal to $\mu$ belongs to $\bigcup_{v \in V_3} \mathcal{S}^+(v)$.
+"""
 
 
 # %%
@@ -325,6 +343,12 @@ def StencilForConditioning(cond):
 stencil = StencilForConditioning(15)
 
 
+# %% [markdown]
+"""
+We implement functions $H_3$ and $H_2$ defined above. In practice, instead of a superbase $v \in V_3$ (respectively a basis $v \in V_2$), their first arguments are the associated matrix $Q$ and vector $w$ (respectively the associated scalar $\omega_0$ and vectors $\omega_1$ and $\omega_2$).
+"""
+
+
 # %%
 def H3(Q, w, b, delta):
     Q_delta = lp.dot_AV(Q, delta)
@@ -339,9 +363,36 @@ def H2(omega0, omega1, omega2, b, delta):
     )
 
 
+# %% [markdown]
+"""
+The scheme may be written as
+\begin{equation}
+    \max_{i \in \{1, 2, 3\}} \max_{v \in V_i} H_i(v, B(x, u(x), D_h u(x)), \Delta_h^v [u, A(x, u(x), D_h u(x))](x)) = 0,
+\end{equation}
+where
+\begin{equation}
+    H_1(v, b, \delta) := 2 \left(\det \left(\frac{v v^\top}{|v|^2}\right)\right)^{1/2} b^{1/2} - \frac{\delta}{|v|^2} = -\frac{\delta}{|v|^2}.
+\end{equation}
+At points $x \in \mathcal{G}_h$ such that $B(x, u(x), D_h u(x)) = 0$, the scheme degenerates to
+\begin{equation}
+    \max_{v \in V_1} H_1(v, 0, \Delta_h^v [u, A(x, u(x), D_h u(x))](x)) = 0.
+\end{equation}
+To prevent errors in the automatic differentiation process, in practice we have to handle this case separately, so we implement the function $H_1$ below. Since it does not depend on $b$, we drop the second argument.
+"""
+
+
 # %%
 def H1(v, delta):
     return -delta / lp.dot_VV(v, v)
+
+
+# %% [markdown]
+"""
+We define a function `Scheme` which is shared between implementations of the scheme with different boundary conditions. Given $a \in \mathcal{S}_2$, $b \geq 0$, the stencil $V_1$, $V_2$, $V_3$, and $\Delta_h^{V_1} [u, 0](x)$, it returns
+\begin{equation}
+    \max_{i \in \{1, 2, 3\}} \max_{v \in V_i} H_i(v, b, \Delta_h^v [u, a](x)).
+\end{equation}
+"""
 
 
 # %%
@@ -355,6 +406,8 @@ def Scheme(a, b, d2u, stencil):
     spad_sum(b)
     spad_sum(delta)
 
+    # For now, replace `b` with one when it is zero, to prevent errors during automatic
+    # differentiation.
     b_zero = b == 0
     b = np.where(b_zero, 1, b)
 
@@ -383,6 +436,7 @@ def Scheme(a, b, d2u, stencil):
             ),
         )
 
+    # Reset residue to minus infinity where `b` should have been zero.
     residue = np.where(b_zero, -np.inf, residue)
 
     for i in range(stencil.V1.shape[1]):
