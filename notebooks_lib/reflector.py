@@ -97,7 +97,10 @@ def simulate_reflector(y, z):
         print(footer, file=f)
 
     result = subprocess.run(
-        ["povray", f"+I{filename}", "+O-"], capture_output=True, check=True
+        ["povray", f"+I{filename}", "+O-"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
     )
     im = imageio.imread(result.stdout)
     plt.imshow(im)

@@ -5,8 +5,9 @@ description = ""
 authors = ["Guillaume Bonnet <guillaume.bonnet@math.u-psud.fr>"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = ">=3.6, <3.7"
 agd = "^0.1"
+dataclasses = "^0.7"
 imageio = "^2.0"
 jupyter = "^1.0"
 matplotlib = "^3.0"
