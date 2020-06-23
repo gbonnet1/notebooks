@@ -19,7 +19,7 @@ from agd import Domain, Selling
 from agd.AutomaticDifferentiation.Optimization import newton_root
 from agd.AutomaticDifferentiation.Sparse import spAD
 
-from lib.reflector import simulate_reflector
+from notebooks_lib.reflector import simulate_reflector
 
 
 # %%
