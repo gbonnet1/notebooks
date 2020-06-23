@@ -74,8 +74,8 @@ object {
 def simulate_reflector(y, z):
     tri = Triangulation(*y)
 
-    with tempfile.NamedTemporaryFile("w", delete=False) as f:
-        filename = f.name
+    with tempfile.NamedTemporaryFile("w", suffix=".pov", delete=False) as f:
+        infile = f.name
 
         print(header, file=f)
         print("#declare Reflector = mesh2 {", file=f)
@@ -96,12 +96,17 @@ def simulate_reflector(y, z):
         print("};", file=f)
         print(footer, file=f)
 
-    result = subprocess.run(
-        ["povray", f"+I{filename}", "+O-"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+    with tempfile.NamedTemporaryFile("w", suffix=".png", delete=False) as f:
+        outfile = f.name
+
+    subprocess.run(
+        ["povray", f"+I{infile}", f"+O{outfile}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         check=True,
     )
-    im = imageio.imread(result.stdout)
+
+    im = imageio.imread(outfile)
+
     plt.imshow(im)
     plt.show()
