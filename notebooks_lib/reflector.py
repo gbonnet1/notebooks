@@ -3,7 +3,9 @@ import tempfile
 
 import imageio
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.tri import Triangulation
+from scipy.interpolate import griddata
 
 header = """#version 3.7;
 
@@ -71,7 +73,13 @@ object {
 
 
 def simulate_reflector(y, z):
-    tri = Triangulation(*y)
+    x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 500)]), indexing="ij"))
+    v = griddata((y[0], y[1]), z, (x[0], x[1]), method="cubic")
+
+    x = x[:, np.logical_not(np.isnan(v))]
+    v = v[np.logical_not(np.isnan(v))]
+
+    tri = Triangulation(*x)
 
     with tempfile.NamedTemporaryFile("w", suffix=".pov", delete=False) as f:
         infile = f.name
@@ -79,10 +87,10 @@ def simulate_reflector(y, z):
         print(header, file=f)
         print("#declare Reflector = mesh2 {", file=f)
         print("    vertex_vectors {", file=f)
-        print(f"        {y.shape[1]}", end="", file=f)
-        for i in range(y.shape[1]):
+        print(f"        {x.shape[1]}", end="", file=f)
+        for i in range(x.shape[1]):
             print(",", file=f)
-            print(f"        <{y[0, i]}, {y[1, i]}, {-z[i]}>", end="", file=f)
+            print(f"        <{x[0, i]}, {x[1, i]}, {-v[i]}>", end="", file=f)
         print("", file=f)
         print("    }", file=f)
         print("    face_indices {", file=f)
