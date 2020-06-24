@@ -23,28 +23,27 @@ global_settings {
 
 camera {
     orthographic
-    location <0, 1, 0>
-    sky <0, 0, 1>
-    right <0, 0, 2>
-    up <2, 0, 0>
-    look_at  <0, 0,  0>
+    location <0, 0, -1>
+    right <2, 0, 0>
+    up <0, 2, 0>
+    look_at  <0, 0, 0>
 }
 
 light_source {
-    <0, 1, 0>,
+    <0, 0, 0>,
     color srgb <0.5, 0.5, 0.5>
     cylinder
     radius 1
-    point_at <0, 2, 0>
+    point_at <0, 0, -1>
 }
 
 mesh2 {
     vertex_vectors {
         4,
-        <-1, 0, -1>,
-        <1, 0, -1>,
-        <1, 0, 1>,
-        <-1, 0, 1>
+        <-1, 1, 0>,
+        <-1, -1, 0>,
+        <1, -1, 0>,
+        <1, 1, 0>
     }
     face_indices {
         2,
@@ -83,7 +82,7 @@ def simulate_reflector(y, z):
         print(f"        {y.shape[1]}", end="", file=f)
         for i in range(y.shape[1]):
             print(",", file=f)
-            print(f"        <{y[0, i]}, {z[i]}, {y[1, i]}>", end="", file=f)
+            print(f"        <{y[0, i]}, {y[1, i]}, {-z[i]}>", end="", file=f)
         print("", file=f)
         print("    }", file=f)
         print("    face_indices {", file=f)
