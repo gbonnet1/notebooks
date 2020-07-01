@@ -12,67 +12,69 @@ header = """#version 3.7;
 #include "colors.inc"
 """
 
-footer = """
-global_settings {
+
+def footer(intensity, target_radius):
+    return f"""
+global_settings {{
     assumed_gamma 1.0
 
     ambient_light 0
 
-    photons {
+    photons {{
         count 1000000
-    }
-}
+    }}
+}}
 
-camera {
+camera {{
     orthographic
     location <0, 0, -1>
-    right <2, 0, 0>
-    up <0, 2, 0>
+    right <{2 * target_radius}, 0, 0>
+    up <0, {2 * target_radius}, 0>
     look_at  <0, 0, 0>
-}
+}}
 
-light_source {
+light_source {{
     <0, 0, 0>,
-    color srgb <0.5, 0.5, 0.5>
+    color srgb <{intensity}, {intensity}, {intensity}>
     cylinder
     radius 1
     point_at <0, 0, -1>
-}
+}}
 
-mesh2 {
-    vertex_vectors {
+mesh2 {{
+    vertex_vectors {{
         4,
-        <-1, 1, 0>,
-        <-1, -1, 0>,
-        <1, -1, 0>,
-        <1, 1, 0>
-    }
-    face_indices {
+        <{-target_radius}, {target_radius}, 0>,
+        <{-target_radius}, {-target_radius}, 0>,
+        <{target_radius}, {-target_radius}, 0>,
+        <{target_radius}, {target_radius}, 0>
+    }}
+    face_indices {{
         2,
         <0, 1, 2>,
         <0, 2, 3>
-    }
-    texture {
-        pigment { color White }
-    }
-}
+    }}
+    texture {{
+        pigment {{ color White }}
+    }}
+}}
 
-object {
+object {{
     Reflector
-    texture {
-        pigment { color White }
-        finish {
+    texture {{
+        pigment {{ color White }}
+        finish {{
             reflection 1
-        }
-    }
-    photons {
+        }}
+    }}
+    photons {{
         target
         reflection on
-    }
-}"""
+    }}
+}}"""
 
 
-def simulate_reflector(y, z):
+def simulate_reflector(y, z, intensity=0.5, target_radius=1):
     x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 500)]), indexing="ij"))
     v = griddata((y[0], y[1]), z, (x[0], x[1]), method="cubic")
 
@@ -101,7 +103,7 @@ def simulate_reflector(y, z):
         print("", file=f)
         print("    }", file=f)
         print("};", file=f)
-        print(footer, file=f)
+        print(footer(intensity, target_radius), file=f)
 
     with tempfile.NamedTemporaryFile("w", suffix=".png", delete=False) as f:
         outfile = f.name

@@ -460,7 +460,7 @@ def Scheme(a, b, d2u, stencil):
 
 # %% [markdown]
 """
-Let $\mathcal{\overline G}_h := \mathcal{G}_h \cap \partial \Omega$ and $g \colon \partial \Omega \to \mathbb{R}$. We are looking for a function $u \colon \mathcal{\overline G}_h \to \mathbb{R}$ which solves the numerical scheme on $\mathcal{G}_h$ and such that $u(x) = g(x)$ on $\partial \Omega$. We have to explain how we adapt the definitions of finite difference operators $D_h$ and $\Delta_h^e$ near $\partial \Omega$. For any $u \colon \mathcal{\overline G}_h \to \mathbb{R}$, $x \in \mathcal{G}_h$, $e \in \mathbb{Z}^2$, and $A \in \mathcal{S}_2$, we let
+Let $\mathcal{\overline G}_h := \mathcal{G}_h \cap \partial \Omega$ and $g \colon \partial \Omega \to \mathbb{R}$. We are looking for a function $u \colon \mathcal{\overline G}_h \to \mathbb{R}$ which solves the numerical scheme on $\mathcal{G}_h$ and such that $u(x) = g(x)$ on $\partial \Omega$. Let us explain how we adapt the definitions of finite difference operators $D_h$ and $\Delta_h^e$ near $\partial \Omega$. For any $u \colon \mathcal{\overline G}_h \to \mathbb{R}$, $x \in \mathcal{G}_h$, $e \in \mathbb{Z}^2$, and $A \in \mathcal{S}_2$, we let
 \begin{equation}
     \delta_h^e u(x) := \frac{u(x + h_+ e) - u(x - h_- e)}{h_+ + h_-},
 \end{equation}
@@ -532,6 +532,57 @@ print("Error:", np.max(np.abs(error)))
 """
 
 
+# %% [markdown]
+"""
+For any $x \in \overline \Omega$ and $r \in \mathbb{R}$, let $P_{\Omega^*}(x, r) \subset \mathbb{R}^2$ be a convex set. We aim to approximate a function $u \colon \overline \Omega \to \mathbb{R}$ which is an admissible solution to the Monge-Ampère equation on $\Omega$ and such that for any $x \in \partial \Omega$,
+\begin{equation}
+    D u(x) \in \partial P_{\Omega^*}(x, u(x)).
+\end{equation}
+If $\sigma \colon \Omega \times \mathbb{R} \times \mathbb{R}^2 \to \mathbb{R}$ is defined by
+\begin{equation}
+    \sigma(x, r, e) := \sup_{p \in P_{\Omega^*}(x, r)} \langle e, p \rangle,
+\end{equation}
+then the boundary condition is equivalent to
+\begin{equation}
+    \sup_{|e| = 1} \langle e, D u(x) \rangle - \sigma(x, u(x), e) = 0
+\end{equation}
+for $x \in \partial \Omega$.
+
+We assume that if $x \in \mathcal{G}_h$, then either $x + h e_1 \in \mathcal{G}_h$ or $x - h e_1 \in \mathcal{G}_h$, and either $x + h e_2 \in \mathcal{G}_h$ or $x - h e_2 \in \mathcal{G}_h$, where $(e_1, e_2)$ is the canonical basis of $\mathbb{R}^2$. For $u \colon \mathcal{G}_h \to \mathbb{R}$, we let
+\begin{equation}
+    D_h u(x) := \begin{pmatrix}
+        (\delta_h^{e_1} u(x) - \delta_h^{-e_1} u(x)) / 2 \\
+        (\delta_h^{e_2} u(x) - \delta_h^{-e_2} u(x)) / 2
+    \end{pmatrix}
+\end{equation}
+where for $e \in \{\pm e_1, \pm e_2\}$,
+\begin{equation}
+    \delta_h^e u(x) = \begin{cases}
+        \frac{u(x + h e) - u(x)}{h} &\text{if } x + h e \in \mathcal{G}_h, \\
+        -\delta_h^{-e} u(x) &\text{else}.
+    \end{cases}
+\end{equation}
+For $u \colon \mathcal{G}_h \to \mathbb{R}$ and $e \in \mathbb{Z}^2$, we let
+\begin{equation}
+    \Delta_h^e u(x) := \frac{\tilde \delta_h^e u(x) + \tilde \delta_h^{-e} u(x)}{h}
+\end{equation}
+where
+\begin{equation}
+    \tilde \delta_h^e u(x) := \begin{cases}
+        \frac{u(x + h e) - u(x)}{h} &\text{if } x + h e \in \mathcal{G}_h, \\
+        \sigma(x, u(x), e) &\text{else}.
+    \end{cases}
+\end{equation}
+
+We assume that there is an open domain $\Omega_0 \subset \overline \Omega_0 \subset \Omega$ such that $B(x, r, p) = 0$ whenever $x \in \Omega \setminus \Omega_0$. In the code below, the variable `domain` represents $\Omega_0$, and we always use $[-1, 1]^2$ as the domain $\Omega$.
+
+There may be infinitely many solutions $u$, so we choose $C \in \mathbb{R}$ and try to approximate the one satifying $u(x_0) = C$, for some given point $x_0 \in \Omega_0$. To this end, we solve the following numerical scheme:
+\begin{equation}
+    \max_{v \in V_3} H(v, B(x, u(x), D_h u(x)), \Delta_h^v [u, A(x, u(x), D_h u(x))](x)) + u(x_0) - C = 0.
+\end{equation}
+"""
+
+
 # %%
 def SchemeBV2(u, x, domain, A, B, C, sigma, stencil):
     bc = Domain.Dirichlet(Domain.Box([[-1, 1], [-1, 1]]), np.inf, x)
@@ -572,6 +623,79 @@ def SchemeBV2(u, x, domain, A, B, C, sigma, stencil):
         - C,
         u - bc.grid_values,
     )
+
+
+# %% [markdown]
+"""
+### Application to reflector design
+"""
+
+
+# %% [markdown]
+"""
+Let $\Omega$, $\Omega^* \subset \mathbb{R}^2$ be open domains. We consider a collimated light source consisting of rays originating from points of $\Omega^* \times \{0\}$ in the direction $e_3 := (0, 0, 1)$. Those rays are reflected downwards by a surface $\mathcal{R} \subset \mathbb{R}^2 \times \mathbb{R}_+$ and hit the plane $\mathbb{R}^2 \times \{0\}$ in points of the domain $\Omega \times \{0\}$.
+
+Let $g \colon \Omega^* \to \mathbb{R}_+^*$ describe the intensity of light originating from $\Omega^* \times \{0\}$, and $f \colon \Omega \to \mathbb{R}$ be such that
+\begin{equation}
+    \int_\Omega f(x)\, d x = \int_{\Omega^*} g(y)\, d y.
+\end{equation}
+We aim to compute a suitable shape for the reflecting surface $\mathcal{R}$ so that the intensity of light hitting the target $\Omega \times \{0\}$ is described by the function $f$.
+
+We assume that the surface $\mathcal{R}$ is of form $\{(y, v(y)) \mid y \in \Omega^*\}$, for some function $v \colon \Omega^* \to \mathbb{R}_+^*$, and that there is $u \colon \Omega \to \mathbb{R}_+^*$ such that
+\begin{equation}
+    v(y) = \sup_{x \in \Omega} H(x, y, u(x)),
+\end{equation}
+\begin{equation}
+    u(x) = \sup_{y \in \Omega^*} G(x, y, v(y)),
+\end{equation}
+where
+\begin{equation}
+    H(x, y, r) := \frac{1}{2 r} - \frac{r}{2} |x - y|^2,
+\end{equation}
+\begin{equation}
+    G(x, y, z) := \frac{1}{z + (|x - y|^2 + z^2)^{1/2}}.
+\end{equation}
+Then for any $x \in \Omega$,
+\begin{equation}
+    v(Y(x, u(x), D u(x))) = Z(x, u(x), D u(x))
+\end{equation}
+where
+\begin{equation}
+    Y(x, r, p) := x + \frac{p}{r^3 + r (r^4 - |p|^2)^{1/2}},
+\end{equation}
+\begin{equation}
+    Z(x, r, p) := \frac{(r^4 - |p|^2)^{1/2}}{r^3 + r (r^4 - |p|^2)^{1/2}},
+\end{equation}
+and $u$ is an admissible solution to the Monge-Ampère equation with
+\begin{equation}
+    A(x, r, p) := \frac{3 r^2 + (r^4 - |p|^2)^{1/2}}{r^3} p p^\top - (r^3 + r (r^4 - |p|^2)^{1/2}) I_2,
+\end{equation}
+\begin{equation}
+    B(x, r, p) := (r^4 - |p|^2)^{1/2} (r^2 + (r^4 - |p|^2)^{1/2})^2 \frac{f(x)}{g(Y(x, r, p))}.
+\end{equation}
+Moreover, for any $x \in \partial \Omega$,
+\begin{equation}
+    Y(x, u(x), D u(x)) \in \partial \Omega^*.
+\end{equation}
+
+Using that
+\begin{equation}
+    y = Y(x, r, p) \iff p = P(x, y, r)
+\end{equation}
+where
+\begin{equation}
+    P(x, y, r) := \frac{2 r^3 (y - x)}{1 + r^2 |y - x|^2},
+\end{equation}
+the last condition may be rewritten as
+\begin{equation}
+    D u(x) \in \partial P(x, \Omega^*, r).
+\end{equation}
+We may either approximate
+\begin{equation}
+    \sigma(x, r, e) := \max_{y \in \Omega^*} \langle e, P(x, y, r) \rangle
+\end{equation}
+by a maximum over a discrete subset of $\partial \Omega^*$ or by assuming that $1 + r^2 |y - x|^2$ is close to one.
+"""
 
 
 # %%
@@ -640,6 +764,76 @@ plt.show()
 
 # %%
 simulate_reflector(y, z)
+
+
+# %% [markdown]
+"""
+#### Far field reflector
+"""
+
+
+# %%
+alpha = (np.sqrt(1 + 0.9 ** 2) - 1) / 0.9 ** 2
+
+
+def f2(x):
+    return (
+        4
+        * alpha ** 2
+        * (1 + alpha ** 2 * lp.dot_VV(x, x))
+        / (1 - alpha ** 2 * lp.dot_VV(x, x)) ** 3
+    ) * f(2 * alpha * x / (1 - alpha ** 2 * lp.dot_VV(x, x)))
+
+
+plt.contourf(*x, np.where(domain_ball.level(x) < 0, f2(x), np.nan))
+plt.show()
+
+
+# %%
+def A_reflector2(x, r, p):
+    return np.zeros((2, 2) + x.shape[1:])
+
+
+def B_reflector2(x, r, p):
+    return alpha ** 2 * f2(x)
+
+
+def sigma_reflector2(x, r, e):
+    return alpha * np.sqrt(lp.dot_VV(e, e))
+
+
+u = newton_root(
+    SchemeBV2,
+    np.zeros(x.shape[1:]),
+    (x, domain_ball, A_reflector2, B_reflector2, 0, sigma_reflector2, stencil),
+)
+
+plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
+plt.show()
+
+
+# %%
+def Y_reflector2(p):
+    return p / alpha
+
+
+def Z_reflector2(x, r, p):
+    return lp.dot_VV(x, p) - r
+
+
+gridscale = x[0, 1, 0] - x[0, 0, 0]
+du = fd.DiffCentered(u, [[1, 0], [0, 1]], gridscale)
+
+interior = domain_ball.level(x) < 0
+y = Y_reflector2(du[:, interior])
+z = Z_reflector2(x[:, interior], u[interior], du[:, interior])
+
+im = plt.tripcolor(*y, z)
+plt.show()
+
+
+# %%
+simulate_reflector(y, z + 100, intensity=30, target_radius=100)
 
 
 # %%
