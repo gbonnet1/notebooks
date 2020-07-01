@@ -260,7 +260,7 @@ We start by declaring an array `x` of elements of $h \mathbb{Z}^2 \cap [-1, 1]^2
 
 # %%
 x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 40)]), indexing="ij"))
-domain_ball = Domain.Ball(radius=0.9)
+domain_ball = Domain.Ball(radius=0.8)
 
 
 # %% [markdown]
@@ -511,7 +511,7 @@ def B_quartic(x, r, p):
 u = newton_root(
     SchemeDirichlet,
     np.zeros(x.shape[1:]),
-    (x, domain_ball, A_zero, B_quartic, 0.9 ** 2, stencil),
+    (x, domain_ball, A_zero, B_quartic, 0.8 ** 2, stencil),
 )
 
 plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
@@ -625,6 +625,27 @@ def SchemeBV2(u, x, domain, A, B, C, sigma, stencil):
     )
 
 
+def SchemeBV2Alt(u, x, domain, A, B, C, F, stencil):
+    bc = Domain.Dirichlet(Domain.Box([[-1, 1], [-1, 1]]), np.inf, x)
+
+    du = fd.DiffCentered(u, [[1, 0], [0, 1]], bc.gridscale)
+    d2u = fd.Diff2(u, stencil.V1, bc.gridscale)
+    du0 = bc.DiffUpwind(u, [[1, 0], [0, 1]])
+    du1 = bc.DiffUpwind(u, [[-1, 0], [0, -1]])
+
+    return np.where(
+        bc.interior,
+        np.where(
+            domain.level(x) < 0,
+            Scheme(A(x, u, du), B(x, u, du), d2u, stencil)
+            + u.flatten()[np.argmin(domain.level(x))]
+            - C,
+            F(x, u, du0, du1),
+        ),
+        u - bc.grid_values,
+    )
+
+
 # %% [markdown]
 """
 ### Application to reflector design
@@ -701,7 +722,7 @@ by a maximum over a discrete subset of $\partial \Omega^*$ or by assuming that $
 # %%
 def f(x):
     return (
-        1 / (3 * 0.9 ** 2)
+        1 / (3 * 0.8 ** 2)
         + np.where((x[0] + 0.1) ** 2 + (x[1] - 0.2) ** 2 < 0.25, 1 / (3 * 0.5 ** 2), 0)
         + np.where(
             np.logical_and(np.logical_and(x[0] < 0.5, x[1] > -0.5), x[0] - x[1] > 0,),
@@ -716,6 +737,16 @@ plt.show()
 
 
 # %%
+def Y_reflector(x, r, p):
+    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
+    return x + 1 / (r ** 3 * tmp) * p
+
+
+def Z_reflector(x, r, p):
+    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
+    return (1 - 1 / tmp) / r
+
+
 def A_reflector(x, r, p):
     tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
     return (2 + tmp) / r * lp.outer(p, p) - r ** 3 * tmp * lp.identity(x.shape[1:])
@@ -730,6 +761,17 @@ def sigma_reflector(x, r, e):
     return 2 * r ** 3 * (np.sqrt(lp.dot_VV(e, e)) - lp.dot_VV(x, e))
 
 
+def F_reflector(x, r, p0, p1):
+    return (
+        np.sum(
+            np.maximum(0, np.maximum(-p0 - 2 * r ** 3 * x, -p1 + 2 * r ** 3 * x)) ** 2,
+            axis=0,
+        )
+        - 4 * r ** 6
+    )
+
+
+# %%
 u = newton_root(
     SchemeBV2,
     np.full(x.shape[1:], 0.1),
@@ -741,16 +783,33 @@ plt.show()
 
 
 # %%
-def Y_reflector(x, r, p):
-    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
-    return x + 1 / (r ** 3 * tmp) * p
+gridscale = x[0, 1, 0] - x[0, 0, 0]
+du = fd.DiffCentered(u, [[1, 0], [0, 1]], gridscale)
+
+interior = domain_ball.level(x) < 0
+y = Y_reflector(x[:, interior], u[interior], du[:, interior])
+z = Z_reflector(x[:, interior], u[interior], du[:, interior])
+
+plt.tripcolor(*y, z)
+plt.show()
 
 
-def Z_reflector(x, r, p):
-    tmp = 1 + np.sqrt(1 - lp.dot_VV(p, p) / r ** 4)
-    return (1 - 1 / tmp) / r
+# %%
+simulate_reflector(y, z)
 
 
+# %%
+u = newton_root(
+    SchemeBV2Alt,
+    0.1 + 0.001 * lp.dot_VV(x, x),
+    (x, domain_ball, A_reflector, B_reflector, 0.1, F_reflector, stencil),
+)
+
+plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
+plt.show()
+
+
+# %%
 gridscale = x[0, 1, 0] - x[0, 0, 0]
 du = fd.DiffCentered(u, [[1, 0], [0, 1]], gridscale)
 
@@ -773,7 +832,7 @@ simulate_reflector(y, z)
 
 
 # %%
-alpha = (np.sqrt(1 + 0.9 ** 2) - 1) / 0.9 ** 2
+alpha = (np.sqrt(1 + 0.8 ** 2) - 1) / 0.8 ** 2
 
 
 def f2(x):
@@ -790,6 +849,14 @@ plt.show()
 
 
 # %%
+def Y_reflector2(p):
+    return p / alpha
+
+
+def Z_reflector2(x, r, p):
+    return lp.dot_VV(x, p) - r
+
+
 def A_reflector2(x, r, p):
     return np.zeros((2, 2) + x.shape[1:])
 
@@ -802,6 +869,11 @@ def sigma_reflector2(x, r, e):
     return alpha * np.sqrt(lp.dot_VV(e, e))
 
 
+def F_reflector2(x, r, p0, p1):
+    return np.sum(np.maximum(0, np.maximum(-p0, -p1)) ** 2, axis=0) - alpha ** 2
+
+
+# %%
 u = newton_root(
     SchemeBV2,
     np.zeros(x.shape[1:]),
@@ -813,14 +885,33 @@ plt.show()
 
 
 # %%
-def Y_reflector2(p):
-    return p / alpha
+gridscale = x[0, 1, 0] - x[0, 0, 0]
+du = fd.DiffCentered(u, [[1, 0], [0, 1]], gridscale)
+
+interior = domain_ball.level(x) < 0
+y = Y_reflector2(du[:, interior])
+z = Z_reflector2(x[:, interior], u[interior], du[:, interior])
+
+im = plt.tripcolor(*y, z)
+plt.show()
 
 
-def Z_reflector2(x, r, p):
-    return lp.dot_VV(x, p) - r
+# %%
+simulate_reflector(y, z + 100, intensity=30, target_radius=100)
 
 
+# %%
+u = newton_root(
+    SchemeBV2Alt,
+    lp.dot_VV(x, x),
+    (x, domain_ball, A_reflector2, B_reflector2, 0, F_reflector2, stencil),
+)
+
+plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
+plt.show()
+
+
+# %%
 gridscale = x[0, 1, 0] - x[0, 0, 0]
 du = fd.DiffCentered(u, [[1, 0], [0, 1]], gridscale)
 
