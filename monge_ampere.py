@@ -259,7 +259,7 @@ We start by declaring an array `x` of elements of $h \mathbb{Z}^2 \cap [-1, 1]^2
 
 
 # %%
-x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 40)]), indexing="ij"))
+x = np.stack(np.meshgrid(*(2 * [np.linspace(-1, 1, 61)]), indexing="ij"))
 domain_ball = Domain.Ball(radius=0.8)
 
 
@@ -576,15 +576,32 @@ where
 
 We assume that there is an open domain $\Omega_0 \subset \overline \Omega_0 \subset \Omega$ such that $B(x, r, p) = 0$ whenever $x \in \Omega \setminus \Omega_0$. In the code below, the variable `domain` represents $\Omega_0$, and we always use $[-1, 1]^2$ as the domain $\Omega$.
 
-There may be infinitely many solutions $u$, so we choose $C \in \mathbb{R}$ and try to approximate the one satifying $u(x_0) = C$, for some given point $x_0 \in \Omega_0$. To this end, we solve the following numerical scheme:
+There may be infinitely many solutions $u$, so we choose $C \in \mathbb{R}$ and try to approximate the one satifying $u(x_0) = C$, for some given point $x_0 \in \Omega_0$. To this end, we look for either a solution $u \colon \mathcal{G}_h \to \mathbb{R}$ to the scheme
 \begin{equation}
-    \max_{v \in V_3} H(v, B(x, u(x), D_h u(x)), \Delta_h^v [u, A(x, u(x), D_h u(x))](x)) + u(x_0) - C = 0.
+    \max_{v \in V_3} H(v, B(x, u(x), D_h u(x)), \Delta_h^v [u, A(x, u(x), D_h u(x))](x)) + u(x_0) - C = 0,
+\end{equation}
+a solution $(u, \alpha)$, $u \colon \mathcal{G}_h \to \mathbb{R}$, $\alpha \in \mathbb{R}$ to the scheme
+\begin{equation}
+    \begin{cases}
+        \max_{v \in V_3} H(v, B(x, u(x), D_h u(x)), \Delta_h^v [u, A(x, u(x), D_h u(x))](x)) = \alpha &\text{in } \mathcal{G}_h, \\
+        u(x_0) = C,
+    \end{cases}
+\end{equation}
+or a solution $(u, \alpha)$, $u \colon \mathcal{G}_h \to \mathbb{R}$, $\alpha \in \mathbb{R}_+^*$ to the scheme
+\begin{equation}
+    \begin{cases}
+        \max_{v \in V_3} H(v, \alpha B(x, u(x), D_h u(x)), \Delta_h^v [u, A(x, u(x), D_h u(x))](x)) = 0 &\text{in } \mathcal{G}_h, \\
+        u(x_0) = C.
+    \end{cases}
 \end{equation}
 """
 
 
 # %%
 def SchemeBV2(u, x, domain, A, B, C, sigma, stencil):
+    tmp = u.flatten()[np.argmin(domain.level(x))]
+    u = np.where(domain.level(x) > np.min(domain.level(x)), u, C)
+
     bc = Domain.Dirichlet(Domain.Box([[-1, 1], [-1, 1]]), np.inf, x)
 
     du0 = bc.DiffUpwind(u, [[1, 0], [0, 1]])
@@ -618,14 +635,20 @@ def SchemeBV2(u, x, domain, A, B, C, sigma, stencil):
 
     return np.where(
         bc.interior,
-        Scheme(A(x, u, du), np.where(domain.level(x) < 0, B(x, u, du), 0), d2u, stencil)
-        + u.flatten()[np.argmin(domain.level(x))]
-        - C,
+        Scheme(
+            A(x, u, du),
+            np.where(domain.level(x) < 0, tmp * B(x, u, du), 0),
+            d2u,
+            stencil,
+        ),
         u - bc.grid_values,
     )
 
 
 def SchemeBV2Alt(u, x, domain, A, B, C, F, stencil):
+    tmp = u.flatten()[np.argmin(domain.level(x))]
+    u = np.where(domain.level(x) > np.min(domain.level(x)), u, C)
+
     bc = Domain.Dirichlet(Domain.Box([[-1, 1], [-1, 1]]), np.inf, x)
 
     du = fd.DiffCentered(u, [[1, 0], [0, 1]], bc.gridscale)
@@ -637,9 +660,7 @@ def SchemeBV2Alt(u, x, domain, A, B, C, F, stencil):
         bc.interior,
         np.where(
             domain.level(x) < 0,
-            Scheme(A(x, u, du), B(x, u, du), d2u, stencil)
-            + u.flatten()[np.argmin(domain.level(x))]
-            - C,
+            Scheme(A(x, u, du), tmp * B(x, u, du), d2u, stencil),
             F(x, u, du0, du1),
         ),
         u - bc.grid_values,
@@ -705,17 +726,49 @@ Using that
 \end{equation}
 where
 \begin{equation}
-    P(x, y, r) := \frac{2 r^3 (y - x)}{1 + r^2 |y - x|^2},
+    P(x, y, r) := \frac{2 r^3 (y - x)}{1 + r^2 |x - y|^2},
 \end{equation}
 the last condition may be rewritten as
 \begin{equation}
     D u(x) \in \partial P(x, \Omega^*, r).
 \end{equation}
-We may either approximate
+Note that if $z = H(x, y, r)$, then
 \begin{equation}
-    \sigma(x, r, e) := \max_{y \in \Omega^*} \langle e, P(x, y, r) \rangle
+    0 \leq r^2 |x - y|^2
+    = (G(x, y, z) |x - y|)^2
+    = \left(\frac{|x - y|}{z + (|x - y|^2 + z^2)^{1/2}}\right)^2 \leq 1
 \end{equation}
-by a maximum over a discrete subset of $\partial \Omega^*$ or by assuming that $1 + r^2 |y - x|^2$ is close to one.
+Let
+\begin{equation}
+    \sigma(x, r, e) := \max_{y \in \Omega^*} \langle e, P(x, y, r) \rangle.
+\end{equation}
+Let $\Omega^* := B(0, 1)$, and assume that
+\begin{equation}
+    \sigma(x, r, e) = \max_{|y| = 1} \langle e, P(x, y, r) \rangle.
+\end{equation}
+If $y$ is optimal in the above, then $|y| = 1$ and
+\begin{align}
+    y
+    &\propto 2 r^3 e + 2 r^5 |x - y|^2 e - 4 r^5 \langle e, y - x \rangle (y - x) \\
+    &= 2 r^3 e + 2 r^5 |x - y|^2 e + 4 r^5 \langle e, y - x \rangle x - 4 r^5 \langle e, y - x \rangle y \\
+    &\propto 2 r^3 e + 2 r^5 |x - y|^2 e + 4 r^5 \langle e, y - x \rangle x \\
+    &= 2 (r^3 + r^5 + r^5 |x|^2) e - 4 r^5 \langle e, x \rangle x + 4 r^5 (\langle e, y \rangle x - \langle x, y \rangle e) \\
+    &= 2 (r^3 + r^5 + r^5 |x|^2) e - 4 r^5 \langle e, x \rangle x + 4 r^5 \det(e, x) y^\perp
+\end{align}
+Let $f := 2 (r^3 + r^5 + r^5 |x|^2) e - 4 r^5 \langle e, x \rangle x$. Then, multiplying the previous formula by $y^\perp$ and using that $|y^\perp| = 1$, we see that
+\begin{equation}
+    \langle y, f^\perp \rangle = 4 r^5 \det(e, x).
+\end{equation}
+Therefore
+\begin{equation}
+    y = \frac{4 r^5 \det(e, x) f^\perp \pm (|f|^2 - 16 r^{10} \det(e, x)^2)^{1/2} f}{|f|^2}.
+\end{equation}
+We compute that
+\begin{align}
+    |f|^2
+    &= 4 (r^3 + r^5 + r^5 |x|^2)^2 |e|^2 + 16 r^{10} \langle e, x \rangle^2 |x|^2 - 8 r^5 (r^3 + r^5 + r^5 |x|^2) \langle e, x \rangle^2 \\
+    &= 4 r^6 |e|^2 + 8 r^8 ((1 + |x|^2) |e|^2 - \langle e, x \rangle^2) + 4 r^{10} ((1 + |x|^2)^2 |e|^2 + 2 (|x|^2 - 1) \langle e, x \rangle^2).
+\end{align}
 """
 
 
@@ -774,9 +827,10 @@ def F_reflector(x, r, p0, p1):
 # %%
 u = newton_root(
     SchemeBV2,
-    np.full(x.shape[1:], 0.1),
+    np.where(domain_ball.level(x) > np.min(domain_ball.level(x)), 0.1, 1),
     (x, domain_ball, A_reflector, B_reflector, 0.1, sigma_reflector, stencil),
 )
+u = np.where(domain_ball.level(x) > np.min(domain_ball.level(x)), u, 0.1)
 
 plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
 plt.show()
@@ -801,9 +855,14 @@ simulate_reflector(y, z)
 # %%
 u = newton_root(
     SchemeBV2Alt,
-    0.1 + 0.001 * lp.dot_VV(x, x),
+    np.where(
+        domain_ball.level(x) > np.min(domain_ball.level(x)),
+        0.1 + 0.001 * lp.dot_VV(x, x),
+        1,
+    ),
     (x, domain_ball, A_reflector, B_reflector, 0.1, F_reflector, stencil),
 )
+u = np.where(domain_ball.level(x) > np.min(domain_ball.level(x)), u, 0.1)
 
 plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
 plt.show()
@@ -876,9 +935,10 @@ def F_reflector2(x, r, p0, p1):
 # %%
 u = newton_root(
     SchemeBV2,
-    np.zeros(x.shape[1:]),
+    np.where(domain_ball.level(x) > np.min(domain_ball.level(x)), 0.0, 1),
     (x, domain_ball, A_reflector2, B_reflector2, 0, sigma_reflector2, stencil),
 )
+u = np.where(domain_ball.level(x) > np.min(domain_ball.level(x)), u, 0)
 
 plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
 plt.show()
@@ -903,9 +963,10 @@ simulate_reflector(y, z + 100, intensity=30, target_radius=100)
 # %%
 u = newton_root(
     SchemeBV2Alt,
-    lp.dot_VV(x, x),
+    np.where(domain_ball.level(x) > np.min(domain_ball.level(x)), lp.dot_VV(x, x), 1),
     (x, domain_ball, A_reflector2, B_reflector2, 0, F_reflector2, stencil),
 )
+u = np.where(domain_ball.level(x) > np.min(domain_ball.level(x)), u, 0)
 
 plt.contourf(*x, np.where(domain_ball.level(x) < 0, u, np.nan))
 plt.show()
