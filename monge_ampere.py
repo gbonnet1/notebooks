@@ -811,16 +811,27 @@ def B_reflector(x, r, p):
 
 
 def sigma_reflector(x, r, e):
-    return 2 * r ** 3 * (np.sqrt(lp.dot_VV(e, e)) - lp.dot_VV(x, e))
+    tmp = (
+        2 * (r ** 3 + r ** 5 + r ** 5 + lp.dot_VV(x, x)) * e
+        - 4 * r ** 5 * lp.dot_VV(e, x) * x
+    )
+    y = (
+        4 * r ** 5 * lp.dot_VV(lp.perp(e), x) * lp.perp(tmp)
+        + np.sqrt(lp.dot_VV(tmp, tmp) - 16 * r ** 10 * lp.dot_VV(lp.perp(e), x) ** 2)
+        * tmp
+    ) / np.stack([lp.dot_VV(tmp, tmp), lp.dot_VV(tmp, tmp)])
+    return 2 * r ** 3 * lp.dot_VV(e, y - x) / (1 + r ** 2 * lp.dot_VV(x - y, x - y))
 
 
 def F_reflector(x, r, p0, p1):
-    return (
-        np.sum(
-            np.maximum(0, np.maximum(-p0 - 2 * r ** 3 * x, -p1 + 2 * r ** 3 * x)) ** 2,
-            axis=0,
-        )
-        - 4 * r ** 6
+    t = np.linspace(-np.pi, np.pi, 25, endpoint=False)
+    e = np.multiply.outer(np.stack([np.cos(t), np.sin(t)]), np.ones(x.shape[1:]))
+    x = np.expand_dims(x, 1)
+    p0 = np.expand_dims(p0, 1)
+    p1 = np.expand_dims(p1, 1)
+    return np.max(
+        np.sum(np.where(e <= 0, e * p0, -e * p1), axis=0) - sigma_reflector(x, r, e),
+        axis=0,
     )
 
 
@@ -929,7 +940,15 @@ def sigma_reflector2(x, r, e):
 
 
 def F_reflector2(x, r, p0, p1):
-    return np.sum(np.maximum(0, np.maximum(-p0, -p1)) ** 2, axis=0) - alpha ** 2
+    t = np.linspace(-np.pi, np.pi, 25, endpoint=False)
+    e = np.multiply.outer(np.stack([np.cos(t), np.sin(t)]), np.ones(x.shape[1:]))
+    x = np.expand_dims(x, 1)
+    p0 = np.expand_dims(p0, 1)
+    p1 = np.expand_dims(p1, 1)
+    return np.max(
+        np.sum(np.where(e <= 0, e * p0, -e * p1), axis=0) - sigma_reflector2(x, r, e),
+        axis=0,
+    )
 
 
 # %%
