@@ -15,7 +15,7 @@ numpy = "^1.0"
 scipy = "^1.0"
 
 [tool.poetry.dev-dependencies]
-black = {version = "^19.0", allow-prereleases = true}
+black = {version = "~20.8b0", allow-prereleases = true}
 flake8 = "^3.0"
 jupytext = "^1.0"
 
