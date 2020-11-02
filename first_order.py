@@ -147,7 +147,8 @@ for u_func in [u_c4, u_c3, u_c2]:
 h = h_max / 2 ** np.arange(0, 1.5, 0.25)
 
 plt.title("Convergence")
-plt.loglog(h, h * h_max, "k:", label="order = 1")
+plt.xlabel("h")
+plt.loglog(h, h, "k:", label="order = 1")
 plt.loglog(h, h ** 2, "k--", label="order = 2")
 
 for u_func, label in [
@@ -176,6 +177,113 @@ for u_func, label in [
 
 plt.legend()
 plt.show()
+
+
+# %% [markdown]
+"""
+## With solutions from literature
+"""
+
+
+# %%
+def u_smooth(x):
+    return lp.dot_VV(x, x) ** 2
+
+
+domain_smooth = Domain.Union(Domain.Ball(), Domain.Box())
+limits_smooth = [[-1, 1], [-1, 1]]
+
+
+def u_c1(x):
+    return np.maximum(0, np.sqrt(lp.dot_VV(x - 0.5, x - 0.5)) - 0.2) ** 2
+
+
+domain_c1 = Domain.Box()
+limits_c1 = [[0, 1], [0, 1]]
+
+
+def u_singular(x):
+    return np.sqrt(2 - lp.dot_VV(x, x))
+
+
+domain_singular = Domain.Box()
+limits_singular = [[0, 1], [0, 1]]
+
+
+# %%
+for u_func, domain, limits in [
+    (u_smooth, domain_smooth, limits_smooth),
+    (u_c1, domain_c1, limits_c1),
+    (u_singular, domain_singular, limits_singular),
+]:
+    x = np.stack(
+        np.meshgrid(
+            np.arange(*limits[0], h_max), np.arange(*limits[1], h_max), indexing="ij"
+        )
+    )
+
+    bc = Domain.Dirichlet(domain, u_func, x)
+
+    u = u_func(x)
+    f = EqLinear(u_func, x)
+
+    u_approx = SolveLinear(x, f, bc)
+
+    plt.title("Exact solution")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+    plt.title("Numerical solution")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u_approx, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+    plt.title("Error")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u - u_approx, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+
+# %%
+
+for u_func, domain, limits, title in [
+    (u_smooth, domain_smooth, limits_smooth, "Smooth function"),
+    (u_c1, domain_c1, limits_c1, "$C^1$ function"),
+    (u_singular, domain_singular, limits_singular, "Singular function"),
+]:
+    h = h_max / 2 ** np.arange(0, 1.625, 0.125)
+    err_l1 = np.zeros(h.shape)
+    err_linf = np.zeros(h.shape)
+
+    for i in range(len(h)):
+        x = np.stack(
+            np.meshgrid(
+                np.arange(*limits[0], h[i]), np.arange(*limits[1], h[i]), indexing="ij"
+            )
+        )
+
+        bc = Domain.Dirichlet(domain, u_func, x)
+
+        u = u_func(x)
+        f = EqLinear(u_func, x)
+
+        u_approx = SolveLinear(x, f, bc)
+
+        err_l1[i] = h[i] ** 2 * np.sum(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_linf[i] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
+
+    plt.title(title)
+    plt.xlabel("h")
+    plt.loglog(h, h, "k:", label="order = 1")
+    plt.loglog(h, h ** 2, "k--", label="order = 2")
+    plt.loglog(h, err_l1, label="$l^1$ error")
+    plt.loglog(h, err_linf, label="$l^\infty$ error")
+    plt.legend()
+    plt.show()
 
 
 # %%
