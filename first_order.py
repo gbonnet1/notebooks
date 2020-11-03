@@ -190,24 +190,31 @@ def u_smooth(x):
     return lp.dot_VV(x, x) ** 2
 
 
-domain_smooth = Domain.Union(Domain.Ball(), Domain.Box())
-limits_smooth = [[-1, 1], [-1, 1]]
+domain_smooth = Domain.AffineTransform(
+    Domain.Union(Domain.Ball(), Domain.Box()), lp.rotation(1 / 3)
+)
+limits_smooth = [[-1, 1], [-1, 1.4]]
 
 
 def u_c1(x):
-    return np.maximum(0, np.sqrt(lp.dot_VV(x - 0.5, x - 0.5)) - 0.2) ** 2
+    return np.maximum(0, np.sqrt(lp.dot_VV(x, x)) - 0.2) ** 2
 
 
-domain_c1 = Domain.Box()
-limits_c1 = [[0, 1], [0, 1]]
+domain_c1 = Domain.AffineTransform(
+    Domain.Box([[-0.5, 0.5], [-0.5, 0.5]]), lp.rotation(1 / 3)
+)
+limits_c1 = [[-0.7, 0.7], [-0.7, 0.7]]
 
 
 def u_singular(x):
-    return np.sqrt(2 - lp.dot_VV(x, x))
+    y = lp.dot_AV(np.multiply.outer(lp.rotation(-1 / 3), np.ones(x.shape[1:])), x) + 0.5
+    return np.sqrt(2 - lp.dot_VV(y, y))
 
 
-domain_singular = Domain.Box()
-limits_singular = [[0, 1], [0, 1]]
+domain_singular = Domain.AffineTransform(
+    Domain.Box([[-0.5, 0.5], [-0.5, 0.5]]), lp.rotation(1 / 3)
+)
+limits_singular = [[-0.7, 0.7], [-0.7, 0.7]]
 
 
 # %%
