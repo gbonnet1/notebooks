@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from agd import Domain, Selling
 from agd.AutomaticDifferentiation import Dense2, Sparse
+from agd.AutomaticDifferentiation.Optimization import newton_root, stop_default
 
 
 # %%
@@ -89,16 +90,8 @@ def SchemeLinear(u, x, f, bc):
     return np.where(
         bc.interior,
         u
-        - lp.dot_VV(
-            coef,
-            du
-            * lp.dot_VAV(
-                np.expand_dims(omega(x), 1),
-                np.expand_dims(lp.inverse(D(x)), 2),
-                offsets,
-            )
-            + d2u,
-        )
+        - lp.dot_VAV(omega(x), lp.inverse(D(x)), np.sum(coef * du * offsets, axis=1))
+        - lp.dot_VV(coef, d2u)
         - f,
         u - bc.grid_values,
     )
@@ -122,13 +115,19 @@ for u_func in [u_c4, u_c3, u_c2]:
     u = u_func(x)
     f = EqLinear(u_func, x)
 
-    u_approx = SolveLinear(x, f, bc)
-
     plt.title("Exact solution")
     plt.axis("equal")
     im = plt.pcolormesh(*x, np.where(bc.interior, u, np.nan))
     plt.colorbar(im)
     plt.show()
+
+    plt.title("Source term")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+    u_approx = SolveLinear(x, f, bc)
 
     plt.title("Numerical solution")
     plt.axis("equal")
@@ -144,7 +143,7 @@ for u_func in [u_c4, u_c3, u_c2]:
 
 
 # %%
-h = h_max / 2 ** np.arange(0, 1.5, 0.25)
+h = h_max / 2 ** np.arange(0, 0.8, 0.05)
 
 plt.title("Convergence")
 plt.xlabel("h")
@@ -234,13 +233,19 @@ for u_func, domain, limits in [
     u = u_func(x)
     f = EqLinear(u_func, x)
 
-    u_approx = SolveLinear(x, f, bc)
-
     plt.title("Exact solution")
     plt.axis("equal")
     im = plt.pcolormesh(*x, np.where(bc.interior, u, np.nan))
     plt.colorbar(im)
     plt.show()
+
+    plt.title("Source term")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+    u_approx = SolveLinear(x, f, bc)
 
     plt.title("Numerical solution")
     plt.axis("equal")
@@ -256,13 +261,12 @@ for u_func, domain, limits in [
 
 
 # %%
-
 for u_func, domain, limits, title in [
     (u_smooth, domain_smooth, limits_smooth, "Smooth function"),
     (u_c1, domain_c1, limits_c1, "$C^1$ function"),
     (u_singular, domain_singular, limits_singular, "Singular function"),
 ]:
-    h = h_max / 2 ** np.arange(0, 1.625, 0.125)
+    h = h_max / 2 ** np.arange(0, 0.8, 0.05)
     err_l1 = np.zeros(h.shape)
     err_linf = np.zeros(h.shape)
 
@@ -279,6 +283,124 @@ for u_func, domain, limits, title in [
         f = EqLinear(u_func, x)
 
         u_approx = SolveLinear(x, f, bc)
+
+        err_l1[i] = h[i] ** 2 * np.sum(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_linf[i] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
+
+    plt.title(title)
+    plt.xlabel("h")
+    plt.loglog(h, h, "k:", label="order = 1")
+    plt.loglog(h, h ** 2, "k--", label="order = 2")
+    plt.loglog(h, err_l1, label="$l^1$ error")
+    plt.loglog(h, err_linf, label="$l^\infty$ error")
+    plt.legend()
+    plt.show()
+
+
+# %% [markdown]
+"""
+## Nonlinear problem
+"""
+
+
+# %%
+def EqNonlinear(u_func, x):
+    x_ad = Dense2.identity(constant=x, shape_free=x.shape[:1])
+    u_ad = u_func(x_ad)
+    u = u_ad.value
+    du = np.moveaxis(u_ad.coef1, -1, 0)
+    d2u = np.moveaxis(u_ad.coef2, [-2, -1], [0, 1])
+    return u + np.sqrt(lp.dot_VV(du, du)) - lp.trace(lp.dot_AA(D(x), d2u))
+
+
+def SchemeNonlinear(u, x, f, bc):
+    coef, offsets = Selling.Decomposition(D(x))
+    du = bc.DiffCentered(u, offsets)
+    d2u = bc.Diff2(u, offsets)
+    p = lp.dot_AV(lp.inverse(D(x)), np.sum(coef * du * offsets, axis=1))
+    return np.where(
+        bc.interior,
+        u + np.sqrt(lp.dot_VV(p, p)) - lp.dot_VV(coef, d2u) - f,
+        u - bc.grid_values,
+    )
+
+
+def SolveNonlinear(x, f, bc):
+    return newton_root(
+        SchemeNonlinear,
+        lp.dot_VV(x, x),
+        params=(x, f, bc),
+        stop=stop_default(residue_tol=1e-7),
+    )
+
+
+# %%
+for u_func, domain, limits in [
+    (u_smooth, domain_smooth, limits_smooth),
+    (u_c1, domain_c1, limits_c1),
+    (u_singular, domain_singular, limits_singular),
+]:
+    x = np.stack(
+        np.meshgrid(
+            np.arange(*limits[0], h_max), np.arange(*limits[1], h_max), indexing="ij"
+        )
+    )
+
+    bc = Domain.Dirichlet(domain, u_func, x)
+
+    u = u_func(x)
+    f = EqNonlinear(u_func, x)
+
+    plt.title("Exact solution")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+    plt.title("Source term")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+    u_approx = SolveNonlinear(x, f, bc)
+
+    plt.title("Numerical solution")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u_approx, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+    plt.title("Error")
+    plt.axis("equal")
+    im = plt.pcolormesh(*x, np.where(bc.interior, u - u_approx, np.nan))
+    plt.colorbar(im)
+    plt.show()
+
+
+# %%
+for u_func, domain, limits, title in [
+    (u_smooth, domain_smooth, limits_smooth, "Smooth function"),
+    (u_c1, domain_c1, limits_c1, "$C^1$ function"),
+    (u_singular, domain_singular, limits_singular, "Singular function"),
+]:
+    h = h_max / 2 ** np.arange(0, 0.8, 0.05)
+    err_l1 = np.zeros(h.shape)
+    err_linf = np.zeros(h.shape)
+
+    for i in range(len(h)):
+        x = np.stack(
+            np.meshgrid(
+                np.arange(*limits[0], h[i]), np.arange(*limits[1], h[i]), indexing="ij"
+            )
+        )
+
+        bc = Domain.Dirichlet(domain, u_func, x)
+
+        u = u_func(x)
+        f = EqNonlinear(u_func, x)
+
+        u_approx = SolveNonlinear(x, f, bc)
 
         err_l1[i] = h[i] ** 2 * np.sum(np.abs(np.where(bc.interior, u - u_approx, 0)))
         err_linf[i] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
