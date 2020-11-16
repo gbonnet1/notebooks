@@ -5,9 +5,9 @@
 
 
 # %%
-# !poetry --version > /dev/null 2> /dev/null || pip install poetry
-# !python -c 'import notebooks_lib' 2> /dev/null || pip install git+https://github.com/gbonnet1/notebooks.git
-# !povray --version > /dev/null 2> /dev/null || apt-get install -y povray
+# ![ -d /var/colab ] && pip install poetry
+# ![ -d /var/colab ] && pip install git+https://github.com/gbonnet1/notebooks.git
+# ![ -d /var/colab ] && apt-get install -y povray
 
 
 # %%
