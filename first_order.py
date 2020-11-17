@@ -15,7 +15,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from agd import Domain, Selling
 from agd.AutomaticDifferentiation import Dense2, Sparse
+from agd.AutomaticDifferentiation.misc import tocsr
 from agd.AutomaticDifferentiation.Optimization import newton_root
+from scipy.sparse import diags
+from scipy.sparse.linalg import eigs, spsolve
 
 # %%
 d = 2
@@ -82,15 +85,15 @@ def grid(h):
 
 # %%
 def u1(x):
-    return 1 / 10 * lp.dot_VV(x, x) ** 2
+    return 0.01 * lp.dot_VV(x, x) ** 2
 
 
 def u2(x):
-    return 0.6 * np.maximum(0, np.sqrt(lp.dot_VV(x, x)) - 0.2) ** 2.5
+    return 0.08 * np.maximum(0, np.sqrt(lp.dot_VV(x, x)) - 0.4) ** 2.5
 
 
 def u3(x):
-    return np.sqrt(d - lp.dot_VV(x, x))
+    return 0.1 * np.sqrt(d - lp.dot_VV(x, x))
 
 
 # %%
@@ -124,7 +127,21 @@ def SchemeLinear(u, x, f, bc):
 def SolveLinear(x, f, bc):
     u = Sparse.identity(constant=np.zeros(x.shape[1:]))
     residue = SchemeLinear(u, x, f, bc)
-    return residue.solve()
+
+    triplets, rhs = residue.solve(raw=True)
+    mat = tocsr(triplets)
+
+    vals, _ = eigs(mat)
+    print(np.max(vals) / np.min(vals))
+
+    precond = diags(1 / mat.diagonal())
+    matprecond = precond @ mat
+    rhsprecond = precond @ rhs
+
+    vals, _ = eigs(matprecond)
+    print(np.max(vals) / np.min(vals))
+
+    return spsolve(matprecond, rhsprecond).reshape(residue.shape)
 
 
 # %%
@@ -190,8 +207,8 @@ for i, (u_func, title) in enumerate(
     plt.subplot(131 + i)
     plt.title(title)
     plt.xlabel("h")
-    plt.loglog(h, h / 4, "k:", label="order = 1")
-    plt.loglog(h, h ** 2 / 4, "k--", label="order = 2")
+    plt.loglog(h, h / 64, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
     plt.loglog(h, err_l1, ".-", label="$l^1$ error")
     plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
     if i == 0:
@@ -211,7 +228,7 @@ def EqNonlinear(u_func, x):
     u_ad = u_func(x_ad)
     du = np.moveaxis(u_ad.coef1, -1, 0)
     d2u = np.moveaxis(u_ad.coef2, [-2, -1], [0, 1])
-    return 1 / 2 * lp.dot_VV(du, du) - lp.trace(lp.dot_AA(D(x), d2u))
+    return -1 / 2 * lp.dot_VV(omega(x), du) ** 2 - lp.trace(lp.dot_AA(D(x), d2u))
 
 
 def SchemeNonlinear(u, x, f, bc):
@@ -221,13 +238,13 @@ def SchemeNonlinear(u, x, f, bc):
     p = lp.dot_AV(lp.inverse(D(x)), np.sum(coef * du * offsets, axis=1))
     return np.where(
         bc.interior,
-        1 / 2 * lp.dot_VV(p, p) - lp.dot_VV(coef, d2u) - f,
+        -1 / 2 * lp.dot_VV(omega(x), p) ** 2 - lp.dot_VV(coef, d2u) - f,
         u - bc.grid_values,
     )
 
 
 def SolveNonlinear(x, f, bc):
-    return newton_root(SchemeNonlinear, lp.dot_VV(x, x), params=(x, f, bc))
+    return newton_root(SchemeNonlinear, -lp.dot_VV(x, x), params=(x, f, bc))
 
 
 # %%
@@ -293,8 +310,8 @@ for i, (u_func, title) in enumerate(
     plt.subplot(131 + i)
     plt.title(title)
     plt.xlabel("h")
-    plt.loglog(h, h / 4, "k:", label="order = 1")
-    plt.loglog(h, h ** 2 / 4, "k--", label="order = 2")
+    plt.loglog(h, h / 64, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
     plt.loglog(h, err_l1, ".-", label="$l^1$ error")
     plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
     if i == 0:
