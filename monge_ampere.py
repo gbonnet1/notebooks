@@ -5,9 +5,9 @@
 
 
 # %%
-# ![ -d /var/colab ] && pip install poetry
-# ![ -d /var/colab ] && pip install git+https://github.com/gbonnet1/notebooks.git
-# ![ -d /var/colab ] && apt-get install -y povray
+# !test -d /var/colab && pip install poetry
+# !test -d /var/colab && pip install git+https://github.com/gbonnet1/notebooks.git
+# !test -d /var/colab && apt-get install -y povray
 
 
 # %%
@@ -778,7 +778,7 @@ def f(x):
         1 / (3 * 0.8 ** 2)
         + np.where((x[0] + 0.1) ** 2 + (x[1] - 0.2) ** 2 < 0.25, 1 / (3 * 0.5 ** 2), 0)
         + np.where(
-            np.logical_and(np.logical_and(x[0] < 0.5, x[1] > -0.5), x[0] - x[1] > 0,),
+            np.logical_and(np.logical_and(x[0] < 0.5, x[1] > -0.5), x[0] - x[1] > 0),
             2 * np.pi / 3,
             0,
         )

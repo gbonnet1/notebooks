@@ -5,8 +5,8 @@
 
 
 # %%
-# ![ -d /var/colab ] && pip install poetry
-# ![ -d /var/colab ] && pip install git+https://github.com/gbonnet1/notebooks.git
+# !test -d /var/colab && pip install poetry
+# !test -d /var/colab && pip install git+https://github.com/gbonnet1/notebooks.git
 
 
 # %%
