@@ -131,15 +131,19 @@ def SolveLinear(x, f, bc):
     triplets, rhs = residue.solve(raw=True)
     mat = tocsr(triplets)
 
-    vals, _ = eigs(mat)
-    print(np.max(vals) / np.min(vals))
+    if False:
+        (val_max,), _ = eigs(mat, 1, which="LM")
+        (val_min,), _ = eigs(mat, 1, which="SM")
+        print(val_max / val_min)
 
     precond = diags(1 / mat.diagonal())
     matprecond = precond @ mat
     rhsprecond = precond @ rhs
 
-    vals, _ = eigs(matprecond)
-    print(np.max(vals) / np.min(vals))
+    if False:
+        (val_max,), _ = eigs(matprecond, 1, which="LM")
+        (val_min,), _ = eigs(matprecond, 1, which="SM")
+        print(val_max / val_min)
 
     return spsolve(matprecond, rhsprecond).reshape(residue.shape)
 
