@@ -205,7 +205,7 @@ for i, (u_func, title) in enumerate(
 
         u_approx = SolveLinear(x, f, bc)
 
-        err_l1[j] = h[j] ** d * np.sum(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
         err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
 
     plt.subplot(131 + i)
@@ -308,7 +308,7 @@ for i, (u_func, title) in enumerate(
 
         u_approx = SolveNonlinear(x, f, bc)
 
-        err_l1[j] = h[j] ** d * np.sum(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
         err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
 
     plt.subplot(131 + i)
