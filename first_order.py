@@ -108,10 +108,10 @@ def EqLinear(u_func, x):
 def SchemeLinear(u, x, f, bc):
     coef, offsets = Selling.Decomposition(D(x))
 
-    coef_min = np.min(coef)
-    offsets_norm2 = lp.dot_VV(offsets, offsets)
-    offsets_max2 = np.max(np.where(coef < 1e-13, 0, offsets_norm2))
-    print(f"h: {bc.gridscale}, c: {coef_min}, e2: {offsets_max2}")
+    # coef_min = np.min(coef)
+    # offsets_norm2 = lp.dot_VV(offsets, offsets)
+    # offsets_max2 = np.max(np.where(coef < 1e-13, 0, offsets_norm2))
+    # print(f"h: {bc.gridscale}, c: {coef_min}, e2: {offsets_max2}")
 
     du = bc.DiffCentered(u, offsets)
     d2u = bc.Diff2(u, offsets)
@@ -124,12 +124,21 @@ def SchemeLinear(u, x, f, bc):
     )
 
 
-def SolveLinear(x, f, bc):
+def MatrixLinear(x, f, bc, return_rhs=False):
     u = Sparse.identity(constant=np.zeros(x.shape[1:]))
     residue = SchemeLinear(u, x, f, bc)
 
     triplets, rhs = residue.solve(raw=True)
     mat = tocsr(triplets)
+
+    if return_rhs:
+        return mat, rhs
+    else:
+        return mat
+
+
+def SolveLinear(x, f, bc):
+    mat, rhs = MatrixLinear(x, f, bc, True)
 
     if False:
         (val_max,), _ = eigs(mat, 1, which="LM")
@@ -145,7 +154,36 @@ def SolveLinear(x, f, bc):
         (val_min,), _ = eigs(matprecond, 1, which="SM")
         print(val_max / val_min)
 
-    return spsolve(matprecond, rhsprecond).reshape(residue.shape)
+    return spsolve(matprecond, rhsprecond).reshape(x.shape[1:])
+
+
+# %%
+h = h_max
+step = 0.1
+
+while np.abs(step) >= 1e-8:
+    h = h + step
+
+    if h >= 1:
+        print("Warning: h is too large")
+        break
+
+    x = grid(h)
+    bc = Domain.Dirichlet(domain, u1, x)
+
+    u = u1(x)
+    f = EqLinear(u1, x)
+
+    mat = MatrixLinear(x, f, bc)
+    min_coef = (diags(mat.diagonal()) - mat).min()
+
+    if step > 0 and min_coef < -1e-8:
+        step = -step / 10
+
+    if step < 0 and min_coef > -1e-8:
+        step = -step / 10
+
+print(h_max, h)
 
 
 # %%
