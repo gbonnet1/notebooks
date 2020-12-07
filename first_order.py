@@ -20,37 +20,37 @@ from agd.AutomaticDifferentiation.Optimization import newton_root
 from scipy.sparse import diags
 from scipy.sparse.linalg import eigs, spsolve
 
-# %%
-d = 2
-
 
 # %%
-if d == 2:
-    cd = 1
-    mu = 3
-    nu = 1 / 10
-elif d == 3:
-    cd = 1 / (2 * np.sqrt(3))
-    mu = 20
-    nu = 1 / 10
-else:
-    raise ValueError(f"Invalid dimension: {d}")
+def domain(d):
+    return Domain.Union(
+        Domain.Ball(center=d * [0], radius=1 / np.sqrt(d)),
+        Domain.Box(sides=d * [(0, 1 / np.sqrt(d))]),
+    )
 
 
 # %%
-domain = Domain.Union(Domain.Ball(center=d * [0]), Domain.Box(sides=d * [(0, 1)]))
+def grid(d, h):
+    return np.stack(
+        np.meshgrid(
+            *(d * [np.arange(-h * np.floor(1 / (np.sqrt(d) * h)), 1 / np.sqrt(d), h)]),
+            indexing="ij",
+        )
+    )
 
 
 # %%
 def omega0(x):
+    d = x.shape[0]
+
     if d == 2:
-        return np.stack([np.cos(np.pi * x[1]), np.sin(np.pi * x[1])])
+        return np.stack([np.cos(2 * np.pi * x[1]), np.sin(2 * np.pi * x[1])])
     elif d == 3:
         return np.stack(
             [
-                np.cos(np.pi * x[1]),
-                np.sin(np.pi * x[1]) * np.cos(np.pi * x[2]),
-                np.sin(np.pi * x[1]) * np.sin(np.pi * x[2]),
+                np.cos(2 * np.pi * x[1]),
+                np.sin(2 * np.pi * x[1]) * np.cos(2 * np.pi * x[2]),
+                np.sin(2 * np.pi * x[1]) * np.sin(2 * np.pi * x[2]),
             ]
         )
     else:
@@ -58,13 +58,14 @@ def omega0(x):
 
 
 def omega(x):
-    return (2 - np.cos(np.pi * x[0])) * omega0(x)
+    return (2 - np.cos(2 * np.pi * x[0])) / 3 * omega0(x)
 
 
 def D(x):
     return (
         mu
-        * (2 + np.cos(np.pi * x[0]))
+        * (2 + np.cos(2 * np.pi * x[0]))
+        / 3
         * (
             nu * lp.identity(x.shape[1:])
             + (1 - nu) * lp.outer(omega0(x / 2), omega0(x / 2))
@@ -73,27 +74,16 @@ def D(x):
 
 
 # %%
-h_max = cd * mu * nu / 3
-
-
-# %%
-def grid(h):
-    return np.stack(
-        np.meshgrid(*(d * [np.arange(-h * np.floor(1 / h), 1, h)]), indexing="ij")
-    )
-
-
-# %%
 def u1(x):
-    return 0.01 * lp.dot_VV(x, x) ** 2
+    return 1 / 4 * lp.dot_VV(x, x) ** 2
 
 
 def u2(x):
-    return 0.08 * np.maximum(0, np.sqrt(lp.dot_VV(x, x)) - 0.4) ** 2.5
+    return 2 / 3 * np.maximum(0, np.sqrt(lp.dot_VV(x, x)) - 0.3) ** 2.5
 
 
 def u3(x):
-    return 0.1 * np.sqrt(d - lp.dot_VV(x, x))
+    return np.where(lp.dot_VV(x, x) < 1, 1 / 2 * np.sqrt(1 - lp.dot_VV(x, x)), 0)
 
 
 # %%
@@ -124,26 +114,19 @@ def SchemeLinear(u, x, f, bc):
     )
 
 
-def MatrixLinear(x, f, bc, return_rhs=False):
+def SolveLinear(x, f, bc):
     u = Sparse.identity(constant=np.zeros(x.shape[1:]))
     residue = SchemeLinear(u, x, f, bc)
 
     triplets, rhs = residue.solve(raw=True)
     mat = tocsr(triplets)
 
-    if return_rhs:
-        return mat, rhs
-    else:
-        return mat
-
-
-def SolveLinear(x, f, bc):
-    mat, rhs = MatrixLinear(x, f, bc, True)
-
     if False:
         (val_max,), _ = eigs(mat, 1, which="LM")
         (val_min,), _ = eigs(mat, 1, which="SM")
         print(val_max / val_min)
+
+    dde = (diags(mat.diagonal()) - mat).min() > -1e-8
 
     precond = diags(1 / mat.diagonal())
     matprecond = precond @ mat
@@ -154,114 +137,7 @@ def SolveLinear(x, f, bc):
         (val_min,), _ = eigs(matprecond, 1, which="SM")
         print(val_max / val_min)
 
-    return spsolve(matprecond, rhsprecond).reshape(x.shape[1:])
-
-
-# %%
-h = h_max
-step = 0.1
-
-while np.abs(step) >= 1e-8:
-    h = h + step
-
-    if h >= 1:
-        print("Warning: h is too large")
-        break
-
-    x = grid(h)
-    bc = Domain.Dirichlet(domain, u1, x)
-
-    u = u1(x)
-    f = EqLinear(u1, x)
-
-    mat = MatrixLinear(x, f, bc)
-    min_coef = (diags(mat.diagonal()) - mat).min()
-
-    if step > 0 and min_coef < -1e-8:
-        step = -step / 10
-
-    if step < 0 and min_coef > -1e-8:
-        step = -step / 10
-
-print(h_max, h)
-
-
-# %%
-if d == 2:
-    plt.figure(figsize=(9, 3))
-
-    for i, (u_func, title) in enumerate(
-        [
-            (u1, "Smooth function $u_1$"),
-            (u2, "$C^{2, 0.5}$ function $u_2$"),
-            (u3, "Singular function $u_3$"),
-        ]
-    ):
-        x = grid(h_max / 8)
-        bc = Domain.Dirichlet(domain, u_func, x)
-
-        u = u_func(x)
-        f = EqLinear(u_func, x)
-
-        u_approx = SolveLinear(x, f, bc)
-
-        plt.subplot(131 + i, aspect="equal")
-        plt.title(title)
-        im = plt.pcolormesh(*x, np.where(bc.interior, np.abs(u - u_approx), np.nan))
-        plt.colorbar(im, orientation="horizontal", format="%.0e")
-
-    plt.savefig("linear-error-2d.png")
-    plt.show()
-
-
-# %%
-plt.figure(figsize=(9, 3))
-
-for i, (u_func, title) in enumerate(
-    [
-        (u1, "Smooth function $u_1$"),
-        (u2, "$C^{2, 0.5}$ function $u_2$"),
-        (u3, "Singular function $u_3$"),
-    ]
-):
-    if d == 2:
-        h = h_max / 2 ** np.arange(0, 3.2, 0.2)
-    elif d == 3:
-        h = h_max / 2 ** np.arange(0, 2.2, 0.2)
-    else:
-        raise ValueError(f"Invalid dimension: {d}")
-
-    err_l1 = np.zeros(h.shape)
-    err_linf = np.zeros(h.shape)
-
-    for j in range(len(h)):
-        x = grid(h[j])
-        bc = Domain.Dirichlet(domain, u_func, x)
-
-        u = u_func(x)
-        f = EqLinear(u_func, x)
-
-        u_approx = SolveLinear(x, f, bc)
-
-        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
-        err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
-
-    plt.subplot(131 + i)
-    plt.title(title)
-    plt.xlabel("h")
-    plt.loglog(h, h / 64, "k:", label="order = 1")
-    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
-    plt.loglog(h, err_l1, ".-", label="$l^1$ error")
-    plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
-    if i == 0:
-        plt.legend()
-    plt.xticks(rotation=30)
-    for text in plt.gca().get_xminorticklabels():
-        text.set_rotation(30)
-
-plt.tight_layout()
-plt.savefig(f"linear-convergence-{d}d.png")
-plt.show()
+    return spsolve(matprecond, rhsprecond).reshape(x.shape[1:]), dde
 
 
 # %%
@@ -286,38 +162,38 @@ def SchemeNonlinear(u, x, f, bc):
 
 
 def SolveNonlinear(x, f, bc):
-    return newton_root(SchemeNonlinear, -lp.dot_VV(x, x), params=(x, f, bc))
+    dde = True
+
+    def Solver(residue):
+        nonlocal dde
+
+        triplets, rhs = residue.solve(raw=True)
+        mat = tocsr(triplets)
+
+        # if (diags(mat.diagonal()) - mat).min() <= -1e-8:
+        #     dde = False
+
+        dde = (diags(mat.diagonal()) - mat).min() > -1e-8
+
+        precond = diags(1 / mat.diagonal())
+        matprecond = precond @ mat
+        rhsprecond = precond @ rhs
+
+        return spsolve(matprecond, rhsprecond).reshape(x.shape[1:])
+
+    result = newton_root(
+        SchemeNonlinear, 0.0001 * lp.dot_VV(x, x), params=(x, f, bc), solver=Solver
+    )
+
+    return result, dde
 
 
 # %%
-if d == 2:
-    plt.figure(figsize=(9, 3))
+d = 2
+mu = 1
+nu = 1 / 10
+h = 0.01
 
-    for i, (u_func, title) in enumerate(
-        [
-            (u1, "Smooth function $u_1$"),
-            (u2, "$C^{2, 0.5}$ function $u_2$"),
-            (u3, "Singular function $u_3$"),
-        ]
-    ):
-        x = grid(h_max / 8)
-        bc = Domain.Dirichlet(domain, u_func, x)
-
-        u = u_func(x)
-        f = EqNonlinear(u_func, x)
-
-        u_approx = SolveNonlinear(x, f, bc)
-
-        plt.subplot(131 + i, aspect="equal")
-        plt.title(title)
-        im = plt.pcolormesh(*x, np.where(bc.interior, np.abs(u - u_approx), np.nan))
-        plt.colorbar(im, orientation="horizontal", format="%.0e")
-
-    plt.savefig("nonlinear-error-2d.png")
-    plt.show()
-
-
-# %%
 plt.figure(figsize=(9, 3))
 
 for i, (u_func, title) in enumerate(
@@ -327,35 +203,71 @@ for i, (u_func, title) in enumerate(
         (u3, "Singular function $u_3$"),
     ]
 ):
-    if d == 2:
-        h = h_max / 2 ** np.arange(0, 3.2, 0.2)
-    elif d == 3:
-        h = h_max / 2 ** np.arange(0, 2.2, 0.2)
-    else:
-        raise ValueError(f"Invalid dimension: {d}")
+    x = grid(d, h)
+    bc = Domain.Dirichlet(domain(d), u_func, x)
 
+    u = u_func(x)
+    f = EqLinear(u_func, x)
+
+    u_approx, _ = SolveLinear(x, f, bc)
+
+    plt.subplot(131 + i, aspect="equal")
+    plt.title(title)
+    im = plt.pcolormesh(*x, np.where(bc.interior, np.abs(u - u_approx), np.nan))
+    plt.colorbar(im, orientation="horizontal", format="%.0e")
+
+plt.savefig("linear-error-2d.png")
+plt.show()
+
+
+# %%
+d = 2
+mu = 1
+nu = 1 / 10
+h = 0.1 / 2 ** np.arange(0, 3.2, 0.2)
+
+plt.figure(figsize=(9, 3))
+
+for i, (u_func, title) in enumerate(
+    [
+        (u1, "Smooth function $u_1$"),
+        (u2, "$C^{2, 0.5}$ function $u_2$"),
+        (u3, "Singular function $u_3$"),
+    ]
+):
     err_l1 = np.zeros(h.shape)
     err_linf = np.zeros(h.shape)
-
-    for j in range(len(h)):
-        x = grid(h[j])
-        bc = Domain.Dirichlet(domain, u_func, x)
-
-        u = u_func(x)
-        f = EqNonlinear(u_func, x)
-
-        u_approx = SolveNonlinear(x, f, bc)
-
-        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
-        err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
 
     plt.subplot(131 + i)
     plt.title(title)
     plt.xlabel("h")
+
+    for j in range(len(h)):
+        x = grid(d, h[j])
+        bc = Domain.Dirichlet(domain(d), u_func, x)
+
+        u = u_func(x)
+        f = EqLinear(u_func, x)
+
+        u_approx, dde = SolveLinear(x, f, bc)
+
+        print(h[j], dde)
+
+        if not dde:
+            plt.axvspan(
+                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+                color="lightgray",
+            )
+
+        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
+
     plt.loglog(h, h / 64, "k:", label="order = 1")
     plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
-    plt.loglog(h, err_l1, ".-", label="$l^1$ error")
     plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
+    plt.loglog(h, err_l1, ".-", label="$l^1$ error")
+
     if i == 0:
         plt.legend()
     plt.xticks(rotation=30)
@@ -363,7 +275,184 @@ for i, (u_func, title) in enumerate(
         text.set_rotation(30)
 
 plt.tight_layout()
-plt.savefig(f"nonlinear-convergence-{d}d.png")
+plt.savefig("linear-convergence-2d.png")
+plt.show()
+
+
+# %%
+d = 2
+mu = 1 / 4
+nu = 1 / 10
+h = 0.1 / 2 ** np.arange(0, 3.2, 0.2)
+
+plt.figure(figsize=(9, 3))
+
+for i, (u_func, title) in enumerate(
+    [
+        (u1, "Smooth function $u_1$"),
+        (u2, "$C^{2, 0.5}$ function $u_2$"),
+        (u3, "Singular function $u_3$"),
+    ]
+):
+    err_l1 = np.zeros(h.shape)
+    err_linf = np.zeros(h.shape)
+
+    plt.subplot(131 + i)
+    plt.title(title)
+    plt.xlabel("h")
+
+    for j in range(len(h)):
+        x = grid(d, h[j])
+        bc = Domain.Dirichlet(domain(d), u_func, x)
+
+        u = u_func(x)
+        f = EqNonlinear(u_func, x)
+
+        u_approx, dde = SolveNonlinear(x, f, bc)
+
+        print(h[j], dde)
+
+        if not dde:
+            plt.axvspan(
+                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+                color="lightgray",
+            )
+
+        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
+
+    plt.loglog(h, h / 64, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
+    plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
+    plt.loglog(h, err_l1, ".-", label="$l^1$ error")
+
+    if i == 0:
+        plt.legend()
+    plt.xticks(rotation=30)
+    for text in plt.gca().get_xminorticklabels():
+        text.set_rotation(30)
+
+plt.tight_layout()
+plt.savefig("nonlinear-convergence-2d.png")
+plt.show()
+
+
+# %%
+d = 3
+mu = 3
+nu = 1 / 10
+h = 0.21 / 2 ** np.arange(0, 2.2, 0.2)
+
+plt.figure(figsize=(9, 3))
+
+for i, (u_func, title) in enumerate(
+    [
+        (u1, "Smooth function $u_1$"),
+        (u2, "$C^{2, 0.5}$ function $u_2$"),
+        (u3, "Singular function $u_3$"),
+    ]
+):
+    err_l1 = np.zeros(h.shape)
+    err_linf = np.zeros(h.shape)
+
+    plt.subplot(131 + i)
+    plt.title(title)
+    plt.xlabel("h")
+
+    for j in range(len(h)):
+        x = grid(d, h[j])
+        bc = Domain.Dirichlet(domain(d), u_func, x)
+
+        u = u_func(x)
+        f = EqLinear(u_func, x)
+
+        u_approx, dde = SolveLinear(x, f, bc)
+
+        print(h[j], dde)
+
+        if not dde:
+            plt.axvspan(
+                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+                color="lightgray",
+            )
+
+        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
+
+    plt.loglog(h, h / 64, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
+    plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
+    plt.loglog(h, err_l1, ".-", label="$l^1$ error")
+
+    if i == 0:
+        plt.legend()
+    plt.xticks(rotation=30)
+    for text in plt.gca().get_xminorticklabels():
+        text.set_rotation(30)
+
+plt.tight_layout()
+plt.savefig("linear-convergence-3d.png")
+plt.show()
+
+
+# %%
+d = 3
+mu = 1
+nu = 1 / 10
+h = 0.21 / 2 ** np.arange(0, 2.2, 0.2)
+
+plt.figure(figsize=(9, 3))
+
+for i, (u_func, title) in enumerate(
+    [
+        (u1, "Smooth function $u_1$"),
+        (u2, "$C^{2, 0.5}$ function $u_2$"),
+        (u3, "Singular function $u_3$"),
+    ]
+):
+    err_l1 = np.zeros(h.shape)
+    err_linf = np.zeros(h.shape)
+
+    plt.subplot(131 + i)
+    plt.title(title)
+    plt.xlabel("h")
+
+    for j in range(len(h)):
+        x = grid(d, h[j])
+        bc = Domain.Dirichlet(domain(d), u_func, x)
+
+        u = u_func(x)
+        f = EqNonlinear(u_func, x)
+
+        u_approx, dde = SolveNonlinear(x, f, bc)
+
+        print(h[j], dde)
+
+        if not dde:
+            plt.axvspan(
+                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+                color="lightgray",
+            )
+
+        err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
+        err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
+
+    plt.loglog(h, h / 64, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
+    plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
+    plt.loglog(h, err_l1, ".-", label="$l^1$ error")
+
+    if i == 0:
+        plt.legend()
+    plt.xticks(rotation=30)
+    for text in plt.gca().get_xminorticklabels():
+        text.set_rotation(30)
+
+plt.tight_layout()
+plt.savefig("nonlinear-convergence-3d.png")
 plt.show()
 
 
