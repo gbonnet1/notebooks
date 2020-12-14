@@ -24,8 +24,8 @@ from scipy.sparse.linalg import eigs, spsolve
 # %%
 def domain(d):
     return Domain.Union(
-        Domain.Ball(center=d * [0], radius=1 / np.sqrt(d)),
-        Domain.Box(sides=d * [(0, 1 / np.sqrt(d))]),
+        Domain.Ball(center=d * [0]),
+        Domain.Box(sides=d * [(0, 1)]),
     )
 
 
@@ -33,7 +33,7 @@ def domain(d):
 def grid(d, h):
     return np.stack(
         np.meshgrid(
-            *(d * [np.arange(-h * np.floor(1 / (np.sqrt(d) * h)), 1 / np.sqrt(d), h)]),
+            *(d * [np.arange(-h * np.floor(1 / h), 1, h)]),
             indexing="ij",
         )
     )
@@ -44,13 +44,13 @@ def omega0(x):
     d = x.shape[0]
 
     if d == 2:
-        return np.stack([np.cos(2 * np.pi * x[1]), np.sin(2 * np.pi * x[1])])
+        return np.stack([np.cos(np.pi * x[1]), np.sin(np.pi * x[1])])
     elif d == 3:
         return np.stack(
             [
-                np.cos(2 * np.pi * x[1]),
-                np.sin(2 * np.pi * x[1]) * np.cos(2 * np.pi * x[2]),
-                np.sin(2 * np.pi * x[1]) * np.sin(2 * np.pi * x[2]),
+                np.cos(np.pi * x[1]),
+                np.sin(np.pi * x[1]) * np.cos(np.pi * x[2]),
+                np.sin(np.pi * x[1]) * np.sin(np.pi * x[2]),
             ]
         )
     else:
@@ -58,13 +58,13 @@ def omega0(x):
 
 
 def omega(x):
-    return (2 - np.cos(2 * np.pi * x[0])) / 3 * omega0(x)
+    return (2 - np.cos(np.pi * x[0])) / 3 * omega0(x)
 
 
 def D(x):
     return (
         mu
-        * (2 + np.cos(2 * np.pi * x[0]))
+        * (2 + np.cos(np.pi * x[0]))
         / 3
         * (
             nu * lp.identity(x.shape[1:])
@@ -79,11 +79,12 @@ def u1(x):
 
 
 def u2(x):
-    return 2 / 3 * np.maximum(0, np.sqrt(lp.dot_VV(x, x)) - 0.3) ** 2.5
+    return np.maximum(0, np.sqrt(lp.dot_VV(x, x)) - 0.4) ** 2.5
 
 
 def u3(x):
-    return np.where(lp.dot_VV(x, x) < 1, 1 / 2 * np.sqrt(1 - lp.dot_VV(x, x)), 0)
+    d = x.shape[0]
+    return np.where(lp.dot_VV(x, x) < d, np.sqrt(d - lp.dot_VV(x, x)), 0)
 
 
 # %%
@@ -237,6 +238,7 @@ for i, (u_func, title) in enumerate(
 ):
     err_l1 = np.zeros(h.shape)
     err_linf = np.zeros(h.shape)
+    threshold = "any"
 
     plt.subplot(131 + i)
     plt.title(title)
@@ -254,17 +256,24 @@ for i, (u_func, title) in enumerate(
         print(h[j], dde)
 
         if not dde:
-            plt.axvspan(
-                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
-                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
-                color="lightgray",
-            )
+            threshold = "none"
+        elif threshold == "none":
+            threshold = h[j]
+
+        # if not dde:
+        #     plt.axvspan(
+        #         np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+        #         np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+        #         color="lightgray",
+        #     )
 
         err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
         err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
 
-    plt.loglog(h, h / 64, "k:", label="order = 1")
-    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
+    print(f"*** threshold: {threshold} ***")
+
+    plt.loglog(h, h / 16, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 16, "k--", label="order = 2")
     plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
     plt.loglog(h, err_l1, ".-", label="$l^1$ error")
 
@@ -281,7 +290,7 @@ plt.show()
 
 # %%
 d = 2
-mu = 1 / 4
+mu = 2
 nu = 1 / 10
 h = 0.1 / 2 ** np.arange(0, 3.2, 0.2)
 
@@ -296,6 +305,7 @@ for i, (u_func, title) in enumerate(
 ):
     err_l1 = np.zeros(h.shape)
     err_linf = np.zeros(h.shape)
+    threshold = "any"
 
     plt.subplot(131 + i)
     plt.title(title)
@@ -313,22 +323,29 @@ for i, (u_func, title) in enumerate(
         print(h[j], dde)
 
         if not dde:
-            plt.axvspan(
-                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
-                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
-                color="lightgray",
-            )
+            threshold = "none"
+        elif threshold == "none":
+            threshold = h[j]
+
+        # if not dde:
+        #     plt.axvspan(
+        #         np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+        #         np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+        #         color="lightgray",
+        #     )
 
         err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
         err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
 
-    plt.loglog(h, h / 64, "k:", label="order = 1")
-    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
+    print(f"*** threshold: {threshold} ***")
+
+    plt.loglog(h, h / 16, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 16, "k--", label="order = 2")
     plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
     plt.loglog(h, err_l1, ".-", label="$l^1$ error")
 
-    if i == 0:
-        plt.legend()
+    # if i == 0:
+    #     plt.legend()
     plt.xticks(rotation=30)
     for text in plt.gca().get_xminorticklabels():
         text.set_rotation(30)
@@ -340,9 +357,9 @@ plt.show()
 
 # %%
 d = 3
-mu = 3
+mu = 4
 nu = 1 / 10
-h = 0.21 / 2 ** np.arange(0, 2.2, 0.2)
+h = 0.3 / 2 ** np.arange(0, 2.2, 0.2)
 
 plt.figure(figsize=(9, 3))
 
@@ -355,6 +372,7 @@ for i, (u_func, title) in enumerate(
 ):
     err_l1 = np.zeros(h.shape)
     err_linf = np.zeros(h.shape)
+    threshold = "any"
 
     plt.subplot(131 + i)
     plt.title(title)
@@ -372,22 +390,29 @@ for i, (u_func, title) in enumerate(
         print(h[j], dde)
 
         if not dde:
-            plt.axvspan(
-                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
-                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
-                color="lightgray",
-            )
+            threshold = "none"
+        elif threshold == "none":
+            threshold = h[j]
+
+        # if not dde:
+        #     plt.axvspan(
+        #         np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+        #         np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+        #         color="lightgray",
+        #     )
 
         err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
         err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
 
-    plt.loglog(h, h / 64, "k:", label="order = 1")
-    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
+    print(f"*** threshold: {threshold} ***")
+
+    plt.loglog(h, h / 16, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 16, "k--", label="order = 2")
     plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
     plt.loglog(h, err_l1, ".-", label="$l^1$ error")
 
-    if i == 0:
-        plt.legend()
+    # if i == 0:
+    #     plt.legend()
     plt.xticks(rotation=30)
     for text in plt.gca().get_xminorticklabels():
         text.set_rotation(30)
@@ -399,9 +424,9 @@ plt.show()
 
 # %%
 d = 3
-mu = 1
+mu = 8
 nu = 1 / 10
-h = 0.21 / 2 ** np.arange(0, 2.2, 0.2)
+h = 0.3 / 2 ** np.arange(0, 2.2, 0.2)
 
 plt.figure(figsize=(9, 3))
 
@@ -414,6 +439,7 @@ for i, (u_func, title) in enumerate(
 ):
     err_l1 = np.zeros(h.shape)
     err_linf = np.zeros(h.shape)
+    threshold = "any"
 
     plt.subplot(131 + i)
     plt.title(title)
@@ -431,22 +457,29 @@ for i, (u_func, title) in enumerate(
         print(h[j], dde)
 
         if not dde:
-            plt.axvspan(
-                np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
-                np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
-                color="lightgray",
-            )
+            threshold = "none"
+        elif threshold == "none":
+            threshold = h[j]
+
+        # if not dde:
+        #     plt.axvspan(
+        #         np.exp((np.log(h[min(len(h) - 1, j + 1)]) + np.log(h[j])) / 2),
+        #         np.exp((np.log(h[j]) + np.log(h[max(0, j - 1)])) / 2),
+        #         color="lightgray",
+        #     )
 
         err_l1[j] = np.mean(np.abs(np.where(bc.interior, u - u_approx, 0)))
         err_linf[j] = np.max(np.abs(np.where(bc.interior, u - u_approx, 0)))
 
-    plt.loglog(h, h / 64, "k:", label="order = 1")
-    plt.loglog(h, h ** 2 / 64, "k--", label="order = 2")
+    print(f"*** threshold: {threshold} ***")
+
+    plt.loglog(h, h / 16, "k:", label="order = 1")
+    plt.loglog(h, h ** 2 / 16, "k--", label="order = 2")
     plt.loglog(h, err_linf, ".-", label="$l^\infty$ error")
     plt.loglog(h, err_l1, ".-", label="$l^1$ error")
 
-    if i == 0:
-        plt.legend()
+    # if i == 0:
+    #     plt.legend()
     plt.xticks(rotation=30)
     for text in plt.gca().get_xminorticklabels():
         text.set_rotation(30)
